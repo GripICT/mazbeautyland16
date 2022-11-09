@@ -1,0 +1,51 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <data>
+
+        <record id="view_order_from_inherit" model="ir.ui.view">
+            <field name="name">sale.order.form.view</field>
+            <field name="model">sale.order</field>
+            <field name="inherit_id" ref="sale.view_order_form"/>
+            <field name="arch" type="xml">
+                <xpath expr="//sheet/div[@name='button_box']/." position="inside">
+                    <button class="oe_stat_button" type="object" name="action_integration_pipeline_form" icon="fa-star"
+                            attrs="{'invisible': [('integration_id', '=', False)]}">
+                        <span attrs="{'invisible': [('integration_id', '=', False)]}" class="o_stat_text">
+                            Integration Workflow
+                        </span>
+                    </button>
+                </xpath>
+                <xpath expr="//group[@name='sale_header']" position="before">
+                    <field name="is_total_amount_difference" invisible="1"/>
+                    <div class="alert alert-warning" role="alert" style="margin-bottom:0px;"
+                         attrs="{'invisible': [('is_total_amount_difference', '!=', True)]}"
+                    >
+                        <b>Warning!</b>
+                        <br/>
+                        Difference in total order amounts in e-Commerce System and Odoo.
+                        Total order amount in e-Commerce System is
+                        <b><field name="integration_amount_total" readonly="True"/></b>.
+                        Total order amount in Odoo is
+                        <b><field name="amount_total" readonly="True"/></b>.
+                    </div>
+                </xpath>
+                <field name="payment_term_id" position="after">
+                    <field name="type_api" invisible="1" />
+                    <field name="sub_status_id"
+                           attrs="{'invisible':['|', ('type_api', '!=', 'prestashop'), ('integration_id', '=', False)]}"/>
+                    <field name="payment_method_id" attrs="{'invisible': [('integration_id', '=', False)]}"/>
+                </field>
+                <notebook position="inside">
+                    <page string="e-Commerce Integration" name="sales_integration">
+                        <group>
+                            <field name="integration_id"/>
+                            <field name="integration_delivery_note"/>
+                            <field name="external_sales_order_ref"/>
+                        </group>
+                    </page>
+                </notebook>
+            </field>
+        </record>
+
+    </data>
+</odoo>

@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<odoo>
+    <data>
+
+        <record id="integration_res_country_state_mapping_view_tree" model="ir.ui.view">
+            <field name="name">integration.res.country.state.mapping.view.tree</field>
+            <field name="model">integration.res.country.state.mapping</field>
+            <field name="arch" type="xml">
+                <tree editable="bottom">
+                    <field name="integration_id"/>
+                    <field name="state_id"/>
+                    <field name="external_state_id"/>
+                </tree>
+            </field>
+        </record>
+
+        <record id="integration_res_country_state_mapping_view_search" model="ir.ui.view">
+            <field name="name">integration.res.country.state.mapping.view.search</field>
+            <field name="model">integration.res.country.state.mapping</field>
+            <field name="arch" type="xml">
+                <search>
+                    <field name="state_id"/>
+                    <filter string="Not Mapped" name="not_mapped" domain="[('state_id', '=', False)]" />
+                </search>
+            </field>
+        </record>
+
+        <record id="integration_res_country_state_mapping_action" model="ir.actions.act_window">
+            <field name="name">States</field>
+            <field name="res_model">integration.res.country.state.mapping</field>
+            <field name="view_mode">tree</field>
+            <field name="context">{'search_default_not_mapped': 1}</field>
+        </record>
+
+    </data>
+</odoo>

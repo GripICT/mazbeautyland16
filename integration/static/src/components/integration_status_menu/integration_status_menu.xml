@@ -1,0 +1,46 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<templates xml:space="preserve">
+
+    <t t-name="integration.IntegrationStatusMenu" owl="1">
+        <t t-if="integrationStatusMenu">
+            <div class="o_IntegrationStatusMenu dropdown" t-att-class="{ 'show bg-black-15': integrationStatusMenu.isOpen, 'o-isDeviceSmall': messaging.device.isSmall }" t-attf-class="{{ className }}" t-ref="root">
+                <a class="o_IntegrationStatusMenu_toggler dropdown-toggle o-no-caret o-dropdown--narrow" t-att-class="{ 'o-no-notification': !integrationStatusMenu.counter }" href="#" title="Integration" role="button" t-att-aria-expanded="integrationStatusMenu.isOpen ? 'true' : 'false'" aria-haspopup="true" t-on-click="integrationStatusMenu.onClickToggler">
+                    <i class="o_IntegrationStatusMenu_icon fa fa-lg fa-rocket" role="img" aria-label="Integrations"/>
+                    <t t-if="!messaging.isInitialized">
+                        <i class="o_IntegrationStatusMenu_loading fa fa-circle-o-notch fa-spin position-absolute bottom-50 end-0 small"/>
+                    </t>
+                    <t t-elif="integrationStatusMenu.activityCounter">
+                        <span class="o_IntegrationStatusMenu_counter badge">
+                            <t t-esc="integrationStatusMenu.activityCounter"/>
+                        </span>
+                    </t>
+                </a>
+                <t t-if="integrationStatusMenu.isOpen">
+                    <div class="o_IntegrationStatusMenu_dropdownMenu o-dropdown-menu dropdown-menu-end d-flex flex-column mt-0 py-0 overflow-auto" t-att-class="{ 'o-isDeviceSmall position-fixed bottom-0 start-0 end-0 flex-grow-1 w-100 m-0 border-0': messaging.device.isSmall, 'border': !messaging.device.isSmall, 'o-messaging-not-initialized align-items-center justify-content-center': !messaging.isInitialized }" role="menu">
+                        <t t-if="!messaging.isInitialized">
+                            <span><i class="o_IntegrationStatusMenu_dropdownLoadingIcon fa fa-circle-o-notch fa-spin me-1"/>Please wait...</span>
+                        </t>
+                        <t t-elif="integrationStatusMenu.integrations">
+                            <t t-foreach="integrationStatusMenu.integrations" t-as="integration" t-key="integration.name">
+                                <table class="table table-sm">
+                                    <tbody>
+                                        <tr>
+                                            <td colspan="4" scope="col"><b><t t-esc="integration.name"/></b></td>
+                                        </tr>
+                                        <tr>
+                                            <td>Failed Jobs: </td>
+                                            <td><span class="text-danger"><t t-esc="integration.failed_jobs_count"/></span></td>
+                                            <td>Missing Mappings: </td>
+                                            <td><span class="text-warning"><t t-esc="integration.missing_mappings_count"/></span></td>
+                                        </tr>
+                                    </tbody>
+                                </table>
+                            </t>
+                        </t>
+                    </div>
+                </t>
+            </div>
+        </t>
+    </t>
+
+</templates>

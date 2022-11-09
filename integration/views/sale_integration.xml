@@ -1,0 +1,397 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<odoo>
+    <data>
+
+        <record id="view_sale_integration_form" model="ir.ui.view">
+            <field name="name">sale.integration.form</field>
+            <field name="model">sale.integration</field>
+            <field name="arch" type="xml">
+                <form string="Sale Integration">
+                    <header>
+                        <button name="action_active"
+                                type="object"
+                                string="Active"
+                                class="btn-primary"
+                                attrs="{'invisible': [('state', 'not in', ['draft'])]}"/>
+
+                        <button name="action_draft"
+                                type="object"
+                                string="Back to Draft"
+                                class="btn-primary"
+                                attrs="{'invisible': [('state', 'not in', ['active'])]}"/>
+
+                        <button name="action_check_connection"
+                                type="object"
+                                string="Check Connection"/>
+
+                        <field name="state"
+                               widget="statusbar"
+                               statusbar_visible="draft,active"/>
+                    </header>
+                    <sheet>
+                        <div class="oe_title oe_left">
+                            <h1 class="oe_inline">
+                                <field name="name"/>
+                            </h1>
+                            <div attrs="{'invisible': ['|', ('webhook_line_ids', '=', []), ('state', '=', 'active')]}">
+                                <div class="alert alert-warning" role="status">
+                                    Note that you have active webhooks defined for the current integration. But integration is inactive.
+                                    So do not forget to delete webhooks by going to “Webhooks“ tab and clicking the “Drop Webhooks“ button.
+                                </div>
+                            </div>
+                        </div>
+                        <notebook colspan="4">
+                            <page string="Settings">
+                                <group>
+                                    <group name="settings">
+                                        <field name="type_api" attrs="{'readonly': [('state', 'not in', ['draft'])]}"/>
+                                        <field name="company_id" groups="base.group_multi_company"/>
+                                        <field name="apply_to_products"/>
+                                        <field name="auto_create_taxes_on_so"/>
+                                        <field name="auto_create_delivery_carrier_on_so"/>
+                                        <field name="import_payments"
+                                               attrs="{'invisible': [('type_api', '!=', 'prestashop')]}"
+                                               groups="base.group_no_one"/>
+                                        <field name="last_receive_orders_datetime"/>
+                                        <field name="is_installed_mrp" invisible="1"/>
+                                    </group>
+                                    <group name="misc">
+                                        <div colspan="2" attrs="{'invisible': ['|', ('type_api', '!=', 'prestashop'), ('is_installed_mrp', '=', True)]}" class="alert alert-warning" role="alert">
+                                            <center>
+                                                <button name="open_mrp_module" type="object" string="Enable Product Bundles/Product Packs Support"/>
+                                            </center>
+                                            <hr/>
+                                            <p>
+                                                On Odoo side to enable support for Bundles/Packs you need to have Manufacturing module installed.
+                                                Then you will be able to create BoMs of type KiT. By clicking this button, you will install
+                                                “Manufacturing“ module on your database. Note that for Odoo Enterprise subscription it will mean
+                                                that your yearly cost of Odoo Enterprise subscription will increase
+                                                (depends on your region but approximately for 300 EUR per year).
+                                            </p>
+                                        </div>
+                                    </group>
+                                </group>
+                                <field name="is_configuration_wizard_exists" invisible="1"/>
+                                <group name="quick_configuration">
+                                    <button name="action_run_configuration_wizard"
+                                            type="object"
+                                            string="Quick Configuration"
+                                            attrs="{'invisible': [('is_configuration_wizard_exists', '!=', True)]}"/>
+                                </group>
+                                <field name="field_ids" attrs="{'readonly': [('state', '=', 'active')]}"/>
+                            </page>
+                            <page string="Sale Order Defaults">
+                                    <group>
+                                        <group name="price_calculation" string="Pricing Calculation">
+                                            <field name="discount_product_id" />
+                                            <field name="positive_price_difference_product_id" />
+                                            <field name="negative_price_difference_product_id" />
+                                            <field name="gift_wrapping_product_id" attrs="{'invisible': [('type_api', '!=', 'prestashop')]}" />
+                                        </group>
+                                        <group name="order_defaults" string="Default Values">
+                                            <field name="order_name_ref" />
+                                            <field name="company_id" invisible="1"/>
+                                            <field name="default_sales_team_id" />
+                                            <field name="default_sales_person_id"/>
+                                            <field name="default_customer" />
+                                        </group>
+                                    </group>
+                                    <group>
+                                        <group name="field_mappings" string="Field Mappings">
+                                            <field name="so_delivery_note_field" />
+                                            <field name="picking_delivery_note_field" />
+                                            <field name="so_external_reference_field" />
+                                        </group>
+                                        <group name="prestashop_actions"
+                                               string="Order Actions"
+                                               attrs="{'invisible': ['|', ('id', '=', False), ('type_api', '!=', 'prestashop')]}">
+
+                                            <field name="run_action_on_cancel_so"/>
+                                            <field name="sub_status_cancel_id"
+                                               attrs="{
+                                                    'required' : [('run_action_on_cancel_so', '=', True)]
+                                               }"
+                                            />
+                                            <p/>
+                                            <field name="run_action_on_shipping_so"/>
+                                            <field name="sub_status_shipped_id"
+                                                   attrs="{
+                                                        'required' : [('run_action_on_shipping_so', '=', True)]
+                                                   }"
+                                            />
+                                        </group>
+                                    </group>
+                            </page>
+                            <page string="Customer Defaults" name="customer_default_page">
+                                <group>
+                                    <group>
+                                        <field name="customer_personal_id_field" />
+                                        <field name="customer_company_vat_field" />
+                                        <field name="customer_company_vat_field_name" invisible="1"/>
+                                    </group>
+                                </group>
+                                <group col="1" attrs="{'invisible': [('customer_company_vat_field_name', '!=', 'vat')]}">
+                                    <span class="badge badge-warning">IMPORTANT!</span>
+                                    <span>
+                                        You have selected VAT field for Company Registration Number synchronization.
+                                        If you have module "VAT Number Validation" installed, than Odoo will accept ONLY
+                                        valid EU VAT numbers. If they are not valid - Sales Order will not be created!!
+                                    </span>
+                                </group>
+                            </page>
+                            <page string="Product Defaults" name="product_default_page">
+                                <group>
+                                    <field name="allow_export_images" />
+                                </group>
+                            </page>
+                            <page string="Inventory">
+                                <group>
+                                    <field name="synchronise_qty_field"/>
+                                    <field name="export_inventory_job_enabled"/>
+                                    <field name="synchronize_all_inventory_periodically"/>
+                                    <field name="next_inventory_synchronization_date" attrs="{'invisible': [('synchronize_all_inventory_periodically', '!=', True)]}"/>
+                                </group>
+                                <group string="Inventory Locations">
+                                    <div colspan="2">
+                                        <p>
+                                            Inventory which using for export inventory.
+                                        </p>
+                                    </div>
+                                    <field name="location_ids" colspan="2" nolabel="1">
+                                        <tree>
+                                            <field name="display_name"/>
+                                        </tree>
+                                    </field>
+                                </group>
+                            </page>
+                            <page string="Testing" groups="base.group_no_one">
+                                <group name="main_testing_fields">
+                                    <field name="test_method" />
+                                    <button
+                                        name="test_job"
+                                        string="Test"
+                                        type="object"
+                                        context="{'is_button': True}"
+                                    />
+                                </group>
+                            </page>
+                            <page string="Webhooks">
+                                <group>
+                                    <button name="create_webhooks" 
+                                            string="Create Webhooks" 
+                                            type="object" 
+                                            class="btn btn-secondary"
+                                    />
+                                    <button name="drop_webhooks"
+                                            string="Drop Webhooks" 
+                                            type="object" 
+                                            class="btn-outline-danger float-right mr-1"
+                                            groups="base.group_no_one"
+                                    />
+                                </group>
+                                <group string="Existing Webhook Lines">
+                                    <field name="webhook_line_ids" readonly="1" nolabel="1" colspan="2">
+                                        <tree no_open="1"
+                                              decoration-success="is_active==True" 
+                                              decoration-danger="is_active==False"
+                                              decoration-warning="is_valid_base_url==False"
+                                        >
+                                            <field name="name"/>
+                                            <field name="technical_name" optional="hide"/>
+                                            <field name="controller_route" optional="hide"/>
+                                            <field name="controller_method" invisible="1"/>
+                                            <field name="external_ref"/>
+                                            <field name="original_base_url" optional="hide"/>
+                                            <field name="integration_id" invisible="1"/>
+                                            <field name="is_active" invisible="1"/>
+                                            <field name="is_valid_base_url" invisible="1"/>
+                                            <button name="mute_line" type="object" string="Activate / Deactivate"/>
+                                        </tree>
+                                    </field>
+                                </group>
+                                <div class="row mt16 o_settings_container">
+                                    <div class="col-12 col-lg-6 o_setting_box">
+                                        <div class="o_setting_left_pane">
+                                            <field name="save_webhook_log"/>
+                                        </div>
+                                        <div class="o_setting_right_pane">
+                                            <label for="save_webhook_log"/>
+                                        </div>
+                                    </div>
+                                </div>
+                                <group>
+                                    <button name="open_webhooks_logs" 
+                                            string="Open Logs" 
+                                            type="object" 
+                                            class="btn btn-secondary"
+                                    />
+                                </group>
+                            </page>
+                            <page string="Jobs">
+                                <group>
+                                    <field name="export_template_job_enabled"/>
+                                    <field name="export_tracking_job_enabled"/>
+                                    <field name="export_sale_order_status_job_enabled"
+                                           attrs="{'invisible': [('type_api', '!=', 'prestashop')]}"
+                                    />
+                                </group>
+                            </page>
+                            <page string="Initial Import">
+                                <table>
+                                    <tr>
+                                        <td colspan="2">
+                                            <button name="action_import_master_data"
+                                                    type="object"
+                                                    string="Import Master Data"/>
+                                        </td>
+                                        <td>
+                                            <p>
+
+                                                After clicking this button connector downloads the following objects from
+                                                the e-Commerce system and tries to automatically map them. In case auto-mapping is
+                                                not possible you will need to do manual mapping in the corresponding menu
+                                                (e.g. "Mappings - Taxes", "Mappings - Attributes", etc.):
+                                                <br/>- Shipping Methods
+                                                <br/>- Taxes
+                                                <br/>- Tax Groups
+                                                <br/>- Payment Methods
+                                                <br/>- Languages
+                                                <br/>- Attributes
+                                                <br/>- Attribute Values
+                                                <br/>- Countries
+                                                <br/>- States
+                                                <br/>- Categories
+                                                <br/>- Sale Order Statuses
+                                                <br/>- Product Features
+                                                <br/>- Product Feature Values
+                                            </p>
+                                        </td>
+                                    </tr>
+                                    <tr><td><br/></td></tr>
+                                    <tr>
+                                        <td colspan="2">
+                                            <button name="action_import_product_from_external"
+                                                    type="object"
+                                                    string="Import Product From External"/>
+                                        </td>
+                                        <td>
+                                            <p>
+                                                After clicking this button the following will happen:
+                                                <br/>- Validation of products in external system. If there are errors - popup will be shown with list of errors so you can fix them
+                                                <br/>- Creation of external products and product variants records (in menu e-Commerce Integration - External- ..)
+                                                <br/>- Attempt to auto-match products by internal reference OR barcode with existing Odoo Products
+                                            </p>
+                                        </td>
+                                    </tr>
+                                    <tr><td><br/></td></tr>
+                                    <tr>
+                                        <td colspan="2">
+                                            <button name="action_create_products_in_odoo"
+                                                    type="object"
+                                                    string="Create Products In Odoo"/>
+                                        </td>
+                                        <td>
+                                            <p>
+                                                After clicking this button the following will happen:
+                                                <br/>- Validation of products in external system. If there are errors - popup will be shown with list of errors so you can fix them
+                                                <br/>- Attempt to auto-match products by internal reference OR barcode with existing Odoo Products
+                                                <br/>- For products that we were not able to auto-match Odoo products will be created
+                                            </p>
+                                        </td>
+                                    </tr>
+                                    <tr><td><br/></td></tr>
+                                    <tr attrs="{'invisible': [('type_api', '!=', 'prestashop')]}">
+                                        <td colspan="2">
+                                            <button name="action_import_related_products"
+                                                    type="object"
+                                                    string="Synchronize Related Products"/>
+                                        </td>
+                                        <td>
+                                            <p>
+                                                <br/>This button will import to Odoo "Optional Products" so in Odoo they will become the same as in e-Commerce System
+                                            </p>
+                                        </td>
+                                    </tr>
+                                    <tr><td><br/></td></tr>
+                                    <tr>
+                                        <td colspan="2">
+                                            <button name="%(import_stock_levels_wizard_action)d"
+                                                    string="Import Stock Levels"
+                                                    type="action"/>
+                                        </td>
+                                        <td>
+                                            <p>
+                                                Run wizard "Import Initial Stock to Odoo"
+                                            </p>
+                                        </td>
+                                    </tr>
+                                    <tr><td><br/></td></tr>
+                                    <tr>
+                                        <td colspan="2">
+                                            <button name="%(import_customers_wizard_action)d"
+                                                    string="Import Customers"
+                                                    type="action"/>
+                                        </td>
+                                        <td>
+                                            <p>
+                                                Run wizard "Import Customers to Odoo"
+                                            </p>
+                                        </td>
+                                    </tr>
+                                </table>
+                            </page>
+                        </notebook>
+                    </sheet>
+                </form>
+            </field>
+        </record>
+
+        <record id="view_sale_integration_list" model="ir.ui.view">
+            <field name="name">sale.integration.list</field>
+            <field name="model">sale.integration</field>
+            <field name="arch" type="xml">
+                <tree string="Sale Integrations">
+                    <field name="name" />
+                </tree>
+            </field>
+        </record>
+
+        <record model="ir.actions.act_window" id="integrations_list_action">
+            <field name="name">Sale Integration</field>
+            <field name="res_model">sale.integration</field>
+            <field name="view_mode">tree,form</field>
+            <field name="view_id" ref="view_sale_integration_list"/>
+            <field name="help" type="html">
+                <p class="oe_view_nocontent_create">Please create your first Sale Integration</p>
+            </field>
+        </record>
+
+        <record id="model_sale_integration_link_all_products" model="ir.actions.server">
+            <field name="name">Link All Products</field>
+            <field name="model_id" ref="integration.model_sale_integration"/>
+            <field name="binding_model_id" ref="integration.model_sale_integration"/>
+            <field name="binding_view_types">form,list</field>
+            <field name="state">code</field>
+            <field name="code">action = records.trigger_link_all()</field>
+        </record>
+
+        <record id="model_sale_integration_unlink_all_products" model="ir.actions.server">
+            <field name="name">Unlink All Products</field>
+            <field name="model_id" ref="integration.model_sale_integration"/>
+            <field name="binding_model_id" ref="integration.model_sale_integration"/>
+            <field name="binding_view_types">form,list</field>
+            <field name="state">code</field>
+            <field name="code">action = records.trigger_unlink_all()</field>
+        </record>
+
+        <record id="model_sale_integration_link_all_mapped_products" model="ir.actions.server">
+            <field name="name">Link All Mapped Products</field>
+            <field name="model_id" ref="integration.model_sale_integration"/>
+            <field name="binding_model_id" ref="integration.model_sale_integration"/>
+            <field name="binding_view_types">form,list</field>
+            <field name="state">code</field>
+            <field name="code">action = records.trigger_link_mapped_products()</field>
+        </record>
+
+    </data>
+</odoo>

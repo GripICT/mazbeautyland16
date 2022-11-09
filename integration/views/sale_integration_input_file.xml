@@ -1,0 +1,77 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<odoo>
+    <data>
+
+        <record id="view_sale_integration_input_file_form" model="ir.ui.view">
+            <field name="name">sale.integration.input.file.form</field>
+            <field name="model">sale.integration.input.file</field>
+            <field name="arch" type="xml">
+                <form string="Sales Order Raw Data">
+                    <header>
+                        <button name="action_cancel"
+                                type="object"
+                                string="Cancel"
+                                attrs="{'invisible': ['|', ('state', 'not in', ['draft', 'unknown']), ('id', '=', False)]}"
+                                class="btn-primary"
+                        />
+                        <button name="action_draft"
+                                type="object"
+                                string="Move To Draft"
+                                attrs="{'invisible': ['|', '|', ('state', 'not in', ['cancelled', 'done']), ('id', '=', False), ('order_id', '!=', False)]}"
+                                class="btn-primary"
+                        />
+                        <button name="process_no_job"
+                                type="object"
+                                string="Process"
+                                attrs="{'invisible': ['|', ('state', '=', 'done'), ('id', '=', False)]}"
+                                class="btn-primary"
+                                groups="base.group_no_one"
+                        />
+                        <button name="run_export_tracking_no_job"
+                                type="object"
+                                string="Export Tracking"
+                                attrs="{'invisible': ['|', ('order_reference', 'not in', (False, '')), ('order_id', '=', False)]}"
+                                class="btn-primary"
+                                groups="base.group_no_one"
+                        />
+                        <field name="state"
+                                widget="statusbar"
+                                statusbar_visible="draft,done,cancelled"/>
+                    </header>
+                    <sheet>
+                        <group>
+                            <field name="name"/>
+                            <field name="si_id" />
+                            <field name="create_date" />
+                            <field name="order_id" />
+                            <field name="order_reference"/>
+                            <field name="display_data" />
+                        </group>
+                    </sheet>
+                </form>
+            </field>
+        </record>
+
+        <record id="view_sale_integration_input_file_list" model="ir.ui.view">
+            <field name="name">sale.integration.input.file.list</field>
+            <field name="model">sale.integration.input.file</field>
+            <field name="arch" type="xml">
+                <tree string="Sales Order Raw Data">
+                        <field name="name" />
+                        <field name="state" />
+                        <field name="si_id" />
+                        <field name="create_date" />
+                        <field name="order_id" />
+                </tree>
+            </field>
+        </record>
+
+        <record model="ir.actions.act_window" id="input_files_list_action">
+            <field name="name">Sales Raw Data</field>
+            <field name="res_model">sale.integration.input.file</field>
+            <field name="view_mode">tree,form</field>
+            <field name="view_id" ref="view_sale_integration_input_file_list"/>
+        </record>
+
+    </data>
+</odoo>
