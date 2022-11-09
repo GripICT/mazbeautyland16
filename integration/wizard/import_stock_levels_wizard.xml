@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+        <record id="view_import_stock_levels_wizard" model="ir.ui.view">
+            <field name="name">Import Stock Levels Wizard</field>
+            <field name="model">import.stock.levels.wizard</field>
+            <field name="arch" type="xml">
+                <form string="Import Initial Stock to Odoo">
+                    <p class="text-danger">
+                        Warning! Below you will specify single location in which you will be importing stock levels
+                        from e-Commerce System to Odoo. During Import Inventory Adjustment will be created separately
+                        for every product that will zero out stock level in all locations and sublocations for
+                        this product and than will add stock levels to the specified location
+                    </p>
+                    <p class="text-danger">
+                        Also products that are tracked by lots or serial numbers we cannot automatically
+                        set stock levels. Inventory Adjustment for them need to be done directly in Odoo in
+                        menu Inventory - Operations - Inventory Adjustment
+                    </p>
+                    <group>
+                        <field name="location_id"/>
+                    </group>
+                    <footer>
+                        <button name="run_import" string="Import" type="object" class="btn-primary"/>
+                        <button string="Cancel" class="btn-secondary" special="cancel"/>
+                    </footer>
+                </form>
+            </field>
+        </record>
+
+        <record id="import_stock_levels_wizard_action" model="ir.actions.act_window">
+            <field name="name">Import Stock Levels Wizard</field>
+            <field name="type">ir.actions.act_window</field>
+            <field name="res_model">import.stock.levels.wizard</field>
+            <field name="view_mode">form</field>
+            <field name="target">new</field>
+            <field name="groups_id" eval="[(4,ref('integration.group_integration_manager'))]"/>
+        </record>
+
+</odoo>

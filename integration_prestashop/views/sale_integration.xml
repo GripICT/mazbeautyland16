@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<odoo>
+    <data>
+
+        <record id="view_sale_integration_form" model="ir.ui.view">
+            <field name="name">sale.integration.form</field>
+            <field name="model">sale.integration</field>
+            <field name="inherit_id" ref="integration.view_sale_integration_form" />
+            <field name="arch" type="xml">
+                <field name="allow_export_images" position="after">
+                    <field name="product_delivery_in_stock" attrs="{'invisible': [('type_api', '!=', 'prestashop')]}" />
+                    <field name="message_templame_in_stock" attrs="{'invisible': [('type_api', '!=', 'prestashop')]}" />
+                    <field name="product_delivery_out_of_stock" attrs="{'invisible': [('type_api', '!=', 'prestashop')]}" />
+                    <field name="message_templame_out_of_stock" attrs="{'invisible': [('type_api', '!=', 'prestashop')]}" />
+                </field>
+                <page name="customer_default_page" position="inside">
+                    <group>
+                        <group>
+                            <field name="subscribed_to_newsletter_id" attrs="{'invisible': ['|', ('id', '=', False), ('type_api', '!=', 'prestashop')]}"/>
+                            <field name="newsletter_registration_date_id" attrs="{'invisible': ['|', ('id', '=', False), ('type_api', '!=', 'prestashop')]}"/>
+                            <field name="customer_registration_date_id" attrs="{'invisible': ['|', ('id', '=', False), ('type_api', '!=', 'prestashop')]}"/>
+                        </group>
+                    </group>
+                </page>
+            </field>
+        </record>
+    </data>
+</odoo>

@@ -1,0 +1,49 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<odoo>
+    <data>
+
+        <record id="integration_product_feature_mapping_view_tree" model="ir.ui.view">
+            <field name="name">integration.product.feature.mapping.view.tree</field>
+            <field name="model">integration.product.feature.mapping</field>
+            <field name="arch" type="xml">
+                <tree editable="bottom">
+                    <field name="integration_id"/>
+                    <field name="feature_id"/>
+                    <field name="external_feature_id"/>
+                    <button type="object"
+                            name="run_import_features"
+                            string="Import Feature"
+                            attrs="{'invisible': [('feature_id', '!=', False)]}"/>
+                </tree>
+            </field>
+        </record>
+
+        <record id="integration_product_feature_mapping_view_search" model="ir.ui.view">
+            <field name="name">integration.product.feature.mapping.view.search</field>
+            <field name="model">integration.product.feature.mapping</field>
+            <field name="arch" type="xml">
+                <search>
+                    <field name="feature_id"/>
+                    <filter string="Not Mapped" name="not_mapped" domain="[('feature_id', '=', False)]" />
+                </search>
+            </field>
+        </record>
+
+        <record id="integration_product_feature_mapping_action" model="ir.actions.act_window">
+            <field name="name">Features</field>
+            <field name="res_model">integration.product.feature.mapping</field>
+            <field name="view_mode">tree</field>
+            <field name="context">{'search_default_not_mapped': 1}</field>
+        </record>
+
+        <record id="integration_product_feature_mapping_action_run_import_features" model="ir.actions.server">
+            <field name="name">Import Product Features</field>
+            <field name="model_id" ref="integration.model_integration_product_feature_mapping"/>
+            <field name="binding_model_id" ref="integration.model_integration_product_feature_mapping"/>
+            <field name="binding_view_types">list</field>
+            <field name="state">code</field>
+            <field name="code">action = records.run_import_features()</field>
+        </record>
+
+    </data>
+</odoo>

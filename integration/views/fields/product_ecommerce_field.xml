@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<odoo>
+    <data>
+
+        <record id="product_ecommerce_field_view_tree" model="ir.ui.view">
+            <field name="name">product.ecommerce.field.view.tree</field>
+            <field name="model">product.ecommerce.field</field>
+            <field name="arch" type="xml">
+                <tree editable="bottom">
+                    <field name="name"/>
+                    <field name="technical_name"/>
+                    <field name="type_api"/>
+                    <field name="value_converter"/>
+                    <field name="odoo_model_id" />
+                    <field name="odoo_field_id" attrs="{'required': [('value_converter', 'in', ('simple', 'translatable_field'))]}"/>
+                    <field name="method_name" attrs="{'required': [('value_converter', '=', 'python_method')]}"/>
+                    <field name="default_for_update"/>
+                    <field name="is_default"/>
+                </tree>
+            </field>
+        </record>
+
+        <record id="product_ecommerce_field_action" model="ir.actions.act_window">
+            <field name="name">Product E-commerce Fields</field>
+            <field name="res_model">product.ecommerce.field</field>
+            <field name="view_mode">tree</field>
+        </record>
+
+    </data>
+</odoo>

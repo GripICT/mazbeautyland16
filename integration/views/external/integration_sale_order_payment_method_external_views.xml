@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<odoo>
+    <data>
+
+        <record id="integration_sale_order_payment_method_external_view_tree" model="ir.ui.view">
+            <field name="name">integration.sale.order.payment.method.external.view.tree</field>
+            <field name="model">integration.sale.order.payment.method.external</field>
+            <field name="arch" type="xml">
+                <tree editable="bottom">
+                    <field name="integration_id"/>
+                    <field name="code"/>
+                    <field name="name"/>
+                    <field name="external_reference"/>
+                </tree>
+            </field>
+        </record>
+
+        <record id="integration_sale_order_payment_method_external_action" model="ir.actions.act_window">
+            <field name="name">Payment Methods</field>
+            <field name="res_model">integration.sale.order.payment.method.external</field>
+            <field name="view_mode">tree</field>
+            <field name="view_id" ref="integration_sale_order_payment_method_external_view_tree"/>
+        </record>
+
+    </data>
+</odoo>

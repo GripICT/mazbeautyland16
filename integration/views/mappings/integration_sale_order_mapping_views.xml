@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<odoo>
+    <data>
+
+        <record id="integration_sale_order_mapping_view_tree" model="ir.ui.view">
+            <field name="name">integration.sale.order.mapping.view.tree</field>
+            <field name="model">integration.sale.order.mapping</field>
+            <field name="arch" type="xml">
+                <tree editable="bottom">
+                    <field name="integration_id"/>
+                    <field name="odoo_id"/>
+                    <field name="external_id"/>
+                </tree>
+            </field>
+        </record>
+
+        <record id="integration_sale_order_mapping_action" model="ir.actions.act_window">
+            <field name="name">Orders</field>
+            <field name="res_model">integration.sale.order.mapping</field>
+            <field name="view_mode">tree</field>
+        </record>
+
+    </data>
+</odoo>
