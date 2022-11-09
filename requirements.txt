@@ -1,1 +1,1 @@
-Cerberus==1.3.2
+git+https://github.com/prestapyt/prestapyt.git@f9898b4245611b487e4592f601a22a07de0a26cc
