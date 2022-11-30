@@ -810,7 +810,7 @@ class PrestaShopApiClient(AbsApiClient):
             )
 
         if 'price' in vals:
-            product.price = vals['price']
+            product.price = round(vals['price'], product.PRESTASHOP_PRECISION)
             product.show_price = IS_TRUE
 
         if 'wholesale_price' in vals:

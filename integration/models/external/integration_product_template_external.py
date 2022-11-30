@@ -416,6 +416,7 @@ class IntegrationProductTemplateExternal(models.Model):
         ProductProduct = self.env['product.product']
         ProductProductExternal = self.env['integration.product.product.external']
         ProductProductMapping = self.env['integration.product.product.mapping']
+        ProductAtributeValue = self.env['product.attribute.value']
 
         external_products = ProductProductExternal.search([
             ('integration_id', '=', integration.id),
@@ -494,16 +495,17 @@ class IntegrationProductTemplateExternal(models.Model):
 
             # Try to find by product_attribute_value
             if not external:
-                attribute_value_ids = set()
-
-                for attribute_value_id in product_id.product_template_attribute_value_ids:
-                    code = attribute_value_id.product_attribute_value_id\
-                        .to_external(integration)
-
-                    attribute_value_ids.add(code)
+                product_value_ids = product_id.product_template_attribute_value_ids.mapped(
+                    'product_attribute_value_id')
 
                 for variant in ext_products:
-                    if set(variant['attribute_value_ids']) == attribute_value_ids:
+                    attribute_value_ids = ProductAtributeValue
+
+                    for ext_attribute_value_id in variant['attribute_value_ids']:
+                        attribute_value_ids += ProductAtributeValue.from_external(
+                            integration, ext_attribute_value_id)
+
+                    if attribute_value_ids == product_value_ids:
                         if variant['variant_id'] not in code_product:
                             external = existing_external_codes[variant['variant_id']]
                             break

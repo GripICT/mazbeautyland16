@@ -23,7 +23,6 @@
                         <button name="process_no_job"
                                 type="object"
                                 string="Process"
-                                attrs="{'invisible': ['|', ('state', '=', 'done'), ('id', '=', False)]}"
                                 class="btn-primary"
                                 groups="base.group_no_one"
                         />
