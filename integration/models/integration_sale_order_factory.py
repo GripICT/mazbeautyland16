@@ -758,38 +758,6 @@ class IntegrationSaleOrderFactory(models.AbstractModel):
                 tax_value['tax_id']
             )
 
-        # 3. If count of discount lines = 1 and tax incorrect then try to improve tax.
-        # All differences of discount without tax will go to the Difference line.
-        # if there are more than 1 discount line we don't know what line to fix
-        if len(discount_lines) != 1:
-            return
-
-        if float_compare(discount_lines.price_tax, discount_taxes, precision_digits=precision) == 0:
-            return
-
-        # 3.1 The calculated taxes do not match the value from E-Commerce System
-        # Try to pick up the values of discount with taxes
-        discount_lines.price_unit = (
-            discount_lines.price_unit * discount_taxes / discount_lines.price_tax
-        )
-
-        difference = discount_lines.price_tax - discount_taxes
-
-        min_price = 10 ** (-1 * precision)
-
-        # If difference = 1 cent try to plus/minus several cents to make the values the same
-        # It may happen when taxes >50%
-        if float_compare(abs(difference), min_price, precision_digits=precision) == 0:
-            for x in range(10):
-                discount_lines.price_unit -= difference
-
-                if float_compare(
-                    discount_lines.price_tax,
-                    discount_taxes,
-                    precision_digits=precision
-                ) == 0:
-                    break
-
     def _add_payment_transactions(self, order, integration, payment_transactions):
         if not payment_transactions or not integration.import_payments:
             return

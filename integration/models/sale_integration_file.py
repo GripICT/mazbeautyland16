@@ -169,8 +169,9 @@ class SaleIntegrationInputFile(models.Model):
 
     def process_no_job(self):
         self.ensure_one()
-        integration = self.si_id
-        return integration.create_order_from_input(self)
+        if self.order_id:
+            return self.order_id
+        return self.si_id.create_order_from_input(self)
 
     def run_export_tracking_no_job(self):
         if not self.order_id:

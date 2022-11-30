@@ -2,13 +2,13 @@
 
 {
     'name': 'Integration',
-    'version': '16.0.1.8.3',
+    'version': '16.0.1.8.4',
     'category': 'Hidden',
     'author': 'VentorTech',
     'website': 'https://ventor.tech',
     'support': 'support@ventor.tech',
     'license': 'OPL-1',
-    'price': 275.00,
+    'price': 25.00,
     'currency': 'EUR',
     'images': ['static/description/icon.png'],
     'summary': 'Sale Integration with External Services',

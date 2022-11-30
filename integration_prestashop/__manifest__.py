@@ -7,8 +7,8 @@
                " Update order status and provide tracking numbers to your customers; "
                "all this automatically and instantly!",
     'category': 'Sales',
-    'version': '16.0.1.8.3',
-    'images': ['static/description/images/banner.gif'],
+    'version': '16.0.1.8.4',
+    'images': ['static/description/images/banner_discount.gif'],
     'author': 'VentorTech',
     'website': 'https://ventor.tech',
     'support': 'support@ventor.tech',

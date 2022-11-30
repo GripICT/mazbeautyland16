@@ -56,6 +56,9 @@ Change Log
 
 |
 
+* 1.8.4 (2022-11-25)
+    - Fixed import or products when there are duplicate product attributes
+
 * 1.8.3 (2022-11-07)
     - Added compatibility with partner_firstname module from OCA
     - Fixed import of gift line
