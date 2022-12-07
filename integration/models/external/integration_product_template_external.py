@@ -454,11 +454,9 @@ class IntegrationProductTemplateExternal(models.Model):
         product_ids = template and template.product_variant_ids or ProductProduct
 
         # A: single variant
-        if len(ext_products) <= 1:
+        if len(ext_products) <= 1 and len(product_ids) == 1:
             code = external_codes[0] if ext_products else default_ext_code
             external = existing_external_codes[code]
-
-            assert len(product_ids) == 1 or not template
 
             ProductProduct.create_or_update_mapping(integration, product_ids, external)
             return {

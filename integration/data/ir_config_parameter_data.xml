@@ -11,5 +11,11 @@
             <field name="key">integration.export_inventory_block_size</field>
             <field name="value">1000</field>
         </record>
+
+        <record model="ir.config_parameter" id="integration_api_key">
+            <field name="key">integration.integration_api_key</field>
+            <field name="value">8c60bb92a2a7beb2a0fc399f0831d6d818a87441</field>
+        </record>
+
     </data>
 </odoo>

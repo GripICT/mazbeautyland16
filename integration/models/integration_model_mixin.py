@@ -1,7 +1,13 @@
 # See LICENSE file for full copyright and licensing details.
 
-from ..exceptions import NotMappedToExternal
+import logging
+
 from odoo import models, api
+
+from ..exceptions import NotMappedToExternal
+
+
+_logger = logging.getLogger(__name__)
 
 
 class IntegrationModelMixin(models.AbstractModel):
@@ -124,4 +130,15 @@ class IntegrationModelMixin(models.AbstractModel):
         for vals in vals_list:
             return bool(set(fields_to_check).intersection(set(vals.keys())))
 
+        return False
+
+    def _perform_method_by_name(self, method_name, *args, **kw):
+        if hasattr(self, method_name):
+            method = getattr(self, method_name)
+            if callable(method):
+                method(*args, **kw)
+                return True
+        _logger.warning(
+            '%s integration. The %s() method not found.', (self.type_api, method_name)
+        )
         return False

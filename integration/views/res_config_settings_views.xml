@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<odoo>
+
+    <record id="res_config_settings_view_form_external_integration" model="ir.ui.view">
+        <field name="name">res.config.settings.view.form.external.integration</field>
+        <field name="model">res.config.settings</field>
+        <field name="priority" eval="100"/>
+        <field name="inherit_id" ref="base.res_config_settings_view_form"/>
+        <field name="arch" type="xml">
+            <xpath expr="//div[hasclass('settings')]" position="inside">
+                <div class="app_settings_block" data-string="Integration" string="Integration" data-key="integration">
+                    <div id="external_integration">
+                        <h2>External Integration</h2>
+                        <div class="row mt16 o_settings_container" name="integration_settings_container">
+                            <div class="col-12 col-lg-6 o_setting_box" id="api_key_setting">
+                                <div class="o_setting_right_pane">
+                                    <label for="integration_api_key"/>
+                                    <field name="integration_api_key" widget="CopyClipboardChar" readonly="1" style="width:100%%"/>
+                                    <button name="generate_integration_api_key" string="Regenerate API Key" type="object"/>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </xpath>
+        </field>
+    </record>
+
+</odoo>

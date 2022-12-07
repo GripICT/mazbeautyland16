@@ -19,6 +19,7 @@
                             <field name="subscribed_to_newsletter_id" attrs="{'invisible': ['|', ('id', '=', False), ('type_api', '!=', 'prestashop')]}"/>
                             <field name="newsletter_registration_date_id" attrs="{'invisible': ['|', ('id', '=', False), ('type_api', '!=', 'prestashop')]}"/>
                             <field name="customer_registration_date_id" attrs="{'invisible': ['|', ('id', '=', False), ('type_api', '!=', 'prestashop')]}"/>
+                            <field name="additional_address_information" attrs="{'invisible': ['|', ('id', '=', False), ('type_api', '!=', 'prestashop')]}"/>
                         </group>
                     </group>
                 </page>

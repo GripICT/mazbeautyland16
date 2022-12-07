@@ -28,6 +28,8 @@ MAPPING_EXCEPT_LIST = [
 ]
 LOG_SEPARATOR = '================================'
 IMPORT_EXTERNAL_BLOCK = 500  # Don't make more, because of 414 Request-URI Too Large error
+EXPORT_EXTERNAL_BLOCK = 500
+
 DEFAULT_LOG_LABEL = 'Sale Integration Webhook'
 PRODUCT_QTY_FIELDS = ['free_qty', 'qty_available', 'virtual_available']
 
@@ -179,6 +181,24 @@ class SaleIntegration(models.Model):
         help='Sub-status that can be set after shipped SO',
     )
 
+    run_action_on_so_invoice_status = fields.Boolean(
+        string='Run Action on Invoiced or Paid SO',
+        copy=False,
+        help='Select if you would like run action on invoiced or paid SO. '
+        'Note that you can configure specific behavior depending on payment method in menu '
+        '"Auto-Workflow -> Payment Methods". See the column "Send payment status when". '
+        'By default action will be executed when order is fully invoiced and all related invoices '
+        'are marked as "Paid" ("In Payment")',
+    )
+
+    sub_status_paid_id = fields.Many2one(
+        comodel_name='sale.order.sub.status',
+        string='Paid Orders Sub-Status',
+        domain='[("integration_id", "=", id)]',
+        copy=False,
+        help='Sub-status that can be set after paid SO',
+    )
+
     is_configuration_wizard_exists = fields.Boolean(
         compute='_compute_configuration_wizard_exists',
     )
@@ -239,6 +259,34 @@ class SaleIntegration(models.Model):
         required=True,
         default='free_qty'
     )
+
+    send_inactive_product = fields.Boolean(
+        string='Send product as “inactive“ on initial export',
+        help='In some cases in Odoo, you only create basic product information. And in the '
+             'external system, you start adding a beautiful description. By enabling this '
+             'setting product will be sent as “inactive“ on initial export, so you can '
+             'review it and publish it later.',
+    )
+
+    request_order_url = fields.Char(
+        string='Request Order URL',
+        compute='_compute_request_order_url',
+        help='URL to send requests to this integration.'
+             'You can use it in your external system to send requests to Odoo.'
+             '<order_id> - must be replaced with order ID in external system.'
+             '<integration_api_key> - must be replaced with integration API key.',
+    )
+
+    def _compute_request_order_url(self):
+        host = self.env['ir.config_parameter'].sudo().get_param('web.base.url')
+        db_name = self.env.cr.dbname
+        ResConfig = self.env['res.config.settings']
+        integration_api_key = ResConfig.get_integration_api_key() or 'integration_api_key=<...>'
+
+        for integration in self:
+            url = f'{host}/{db_name}/integration/{self.id}/external-order/' \
+                  f'<order_id>?integration_api_key={integration_api_key}'
+            integration.request_order_url = url
 
     def _compute_next_inventory_synchronization_date(self):
         for integration in self.filtered('inventory_synchronization_cron_id'):
@@ -503,10 +551,10 @@ class SaleIntegration(models.Model):
 
     @api.model
     def get_integrations(self, job, company):
-        domain = [
-            ('state', '=', 'active'),
-            (f'{job}_job_enabled', '=', True),
-        ]
+        domain = [('state', '=', 'active')]
+
+        if job:
+            domain.append((f'{job}_job_enabled', '=', True))
 
         if company:
             domain.append(('company_id', '=', company.id))
@@ -524,7 +572,7 @@ class SaleIntegration(models.Model):
         result = self[job_enabled_field_name]
         return result
 
-    @api.model
+    @api.model_create_multi
     def create(self, vals):
         res = super().create(vals)
         res.write_settings_fields(vals)
@@ -649,6 +697,17 @@ class SaleIntegration(models.Model):
     @api.model
     def get_default_settings_fields(self, type_api=None):
         return getattr(self.get_class(), 'settings_fields')
+
+    def get_integration_location(self):
+        self.ensure_one()
+
+        if not self.location_ids:
+            wh_ids = self.env['stock.warehouse'].search([
+                ('company_id', '=', self.company_id.id)
+            ])
+            return wh_ids.mapped('lot_stock_id')
+
+        return self.location_ids
 
     def initial_import_taxes(self):
         self.integrationApiImportTaxes()
@@ -1305,10 +1364,9 @@ class SaleIntegration(models.Model):
         self.ensure_one()
 
         adapter = self._build_adapter()
-        adapter.export_sale_order_status(
-            order.to_external(self),
-            order.sub_status_id.to_external(self),
-        )
+        vals = order._prepare_vals_for_sale_order_status()
+        res = adapter.export_sale_order_status(vals)
+        return f'{res}\n\nExported Data:\n\n{json.dumps(vals, indent=4)}'
 
     def export_attribute(self, attribute):
         self.ensure_one()
@@ -1530,11 +1588,12 @@ class SaleIntegration(models.Model):
         input_file.state = 'done'
         input_file.order_id = order.id
 
-        job_kwargs = {
-            'channel': self.env.ref('integration.channel_sale_order').complete_name,
-            'description': f'Create Integration Workflow: [{self.id}][{order.display_name}]',
-        }
-        order.with_delay(**job_kwargs)._run_integration_workflow(order_data, input_file.id)
+        job_kwargs = order._build_workflow_job_kwargs()
+        job_kwargs['description'] = (
+            f'Create Integration Workflow: [{self.id}][{order.display_name}]'
+        )
+        order.with_delay(**job_kwargs)\
+            ._build_and_run_integration_workflow(order_data, input_file.id)
         return order
 
     def integrationApiCreateOrders(self):  # Seems this one not used currently
@@ -1615,7 +1674,6 @@ class SaleIntegration(models.Model):
             'phone': {'type': 'string', 'required': False},
             'mobile': {'type': 'string', 'required': False},
         }
-
         line_schema = {
             'id': {'type': 'string'},
             'product_id': {'type': 'string'},
@@ -1630,12 +1688,38 @@ class SaleIntegration(models.Model):
             'price_unit_tax_incl': {'type': 'number', 'required': False},
             'discount': {'type': 'number', 'required': False},
         }
-
         payment_transaction_schema = {
             'transaction_id': {'type': 'string', 'required': True},
             'transaction_date': {'type': 'string', 'required': True},
             'amount': {'type': 'number', 'required': True},
             'currency': {'type': 'string', 'required': False},
+        }
+        delivery_schema = {
+            'carrier': {'type': 'dict'},
+            'shipping_cost': {'type': 'float'},
+            'shipping_cost_tax_excl': {'type': 'float', 'required': False},
+            'carrier_tax_rate': {'type': 'float', 'required': False},
+            'carrier_tax_ids': {
+                'type': 'list',
+                'schema': {'type': 'string'},
+                'required': False,
+            },
+        }
+        discount_schema = {
+            'total_discounts_tax_incl': {'type': 'float', 'required': False},
+            'total_discounts_tax_excl': {'type': 'float', 'required': False},
+        }
+        gift_schema = {
+            'do_gift_wrapping': {'type': 'boolean', 'required': False},
+            'wrapping_tax_behavior': {'type': 'string', 'required': False},
+            'total_wrapping_tax_incl': {'type': 'float', 'required': False},
+            'total_wrapping_tax_excl': {'type': 'float', 'required': False},
+            'recycled_packaging': {'type': 'boolean', 'required': False},
+            'wrapping_tax_ids': {
+                'type': 'list',
+                'schema': {'type': 'string'},
+                'required': False,
+            },
         }
 
         order_schema = {
@@ -1674,32 +1758,21 @@ class SaleIntegration(models.Model):
                     'schema': payment_transaction_schema,
                 },
             },
-            'carrier': {
+            'delivery_data': {
                 'type': 'dict',
+                'schema': delivery_schema,
             },
-            'shipping_cost': {'type': 'float'},
+            'discount_data': {
+                'type': 'dict',
+                'schema': discount_schema,
+            },
+            'gift_data': {
+                'type': 'dict',
+                'schema': gift_schema,
+            },
             'currency': {'type': 'string', 'required': False},
-            'shipping_cost_tax_excl': {'type': 'float', 'required': False},
-            'total_discounts_tax_incl': {'type': 'float', 'required': False},
-            'total_discounts_tax_excl': {'type': 'float', 'required': False},
             'amount_total': {'type': 'float', 'required': False},
-            'carrier_tax_rate': {'type': 'float', 'required': False},
-            'carrier_tax_ids': {
-                'type': 'list',
-                'schema': {'type': 'string'},
-                'required': False,
-            },
             'carrier_tax_behavior': {'type': 'string', 'required': False},
-            'recycled_packaging': {'type': 'boolean', 'required': False},
-            'gift_wrapping': {'type': 'boolean', 'required': False},
-            'total_wrapping_tax_incl': {'type': 'float', 'required': False},
-            'total_wrapping_tax_excl': {'type': 'float', 'required': False},
-            'wrapping_tax_ids': {
-                'type': 'list',
-                'schema': {'type': 'string'},
-                'required': False,
-            },
-            'wrapping_tax_behavior': {'type': 'string', 'required': False},
         }
 
         self._validate_by_schema(order, order_schema)
@@ -1879,4 +1952,19 @@ class SaleIntegration(models.Model):
                                       )
 
     def _should_link_parent_contact(self):
+        # Since we are having `external_company_name` this one may de dropped.
         return True
+
+    def force_set_inactive(self):
+        return {'active': False}
+
+    def _set_zero_time_zone(self, external_date):
+        """
+        Set time zone to UTC+0
+        :param external_date - datetime class from dateutil
+        :return: datetime object with time zone UTC+0
+        """
+        if external_date.tzinfo is not None:
+            utc_data = external_date.astimezone(pytz.utc)
+            return datetime.strftime(utc_data, DATETIME_FORMAT)
+        return external_date

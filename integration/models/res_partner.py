@@ -21,15 +21,25 @@ class ResPartner(models.Model):
         string='Is Address',
         default=False,
     )
-
     integration_id = fields.Many2one(
         string='e-Commerce Integration',
         comodel_name='sale.integration',
         required=False,
         ondelete='set null',
     )
+    external_company_name = fields.Char(
+        string='External Company Name',
+    )
 
     @api.model
     def _commercial_fields(self):
         return super(ResPartner, self)._commercial_fields() + \
             ['integration_id']
+
+    def _get_contact_name(self, partner, name):
+        # Redefined the standart method inside the `name_get` calling in order to add
+        # the `external_company_name` char field to PDF report.
+        partner_sudo = partner.sudo()
+        if partner_sudo.parent_id and partner_sudo.external_company_name:
+            return f'{partner_sudo.external_company_name}, {name}'
+        return super(ResPartner, self)._get_contact_name(partner, name)

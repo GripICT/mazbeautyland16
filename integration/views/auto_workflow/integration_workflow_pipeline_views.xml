@@ -10,6 +10,7 @@
                     <group>
                         <field name="order_id" readonly="1"/>
                         <field name="sub_state_external_ids" readonly="1" widget="many2many_tags"/>
+                        <field name="skip_dispatch" readonly="1"/>
                         <field name="force_invoice_date" readonly="1"/>
                         <field name="invoice_journal_id" readonly="1"/>
                         <field name="payment_journal_id" readonly="1"/>

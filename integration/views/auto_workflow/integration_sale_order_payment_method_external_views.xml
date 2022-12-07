@@ -7,9 +7,12 @@
             <field name="model">integration.sale.order.payment.method.external</field>
             <field name="arch" type="xml">
                 <tree editable="bottom" create="0">
+                    <field name="company_id" invisible="1"/>
                     <field name="integration_id" readonly="1"/>
                     <field name="name" readonly="1"/>
                     <field name="payment_journal_id" options="{'no_create': True}"/>
+                    <field name="payment_term_id" options="{'no_create': True}"/>
+                    <field name="send_payment_status_when"/>
                 </tree>
             </field>
         </record>

@@ -47,6 +47,8 @@
                         <field name="sub_status_cancel_id" attrs="{'required' : [('run_action_on_cancel_so', '=', True)]}"/>
                         <field name="run_action_on_shipping_so" />
                         <field name="sub_status_shipped_id" attrs="{'required' : [('run_action_on_shipping_so', '=', True)]}"/>
+                        <field name="run_action_on_so_invoice_status" />
+                        <field name="sub_status_paid_id" attrs="{'required' : [('run_action_on_so_invoice_status', '=', True)]}"/>
                     </group>
                     <group name="step_api" states="step_api">
                         <div colspan="2">

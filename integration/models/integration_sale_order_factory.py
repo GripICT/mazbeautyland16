@@ -1,15 +1,13 @@
 # See LICENSE file for full copyright and licensing details.
 
 from ..exceptions import ApiImportError
-from .sale_integration import DATETIME_FORMAT
 
 import logging
-from datetime import datetime
 from dateutil import parser
 
 from odoo import models, api, _
 from odoo.exceptions import UserError
-from odoo.tools.float_utils import float_compare, float_is_zero, float_round
+from odoo.tools.float_utils import float_is_zero, float_round
 
 
 OTHER = 'other'
@@ -67,19 +65,14 @@ class IntegrationSaleOrderFactory(models.AbstractModel):
         order.write(values)
 
         # 1. Creating Delivery Line
-        self._create_delivery_line(integration, order, order_data)
+        self._create_delivery_line(order, order_data['delivery_data'])
 
         # 2. Creating Discount Line.
         # !!! It should be after Creating Delivery Line
-        self._create_discount_line(
-            integration,
-            order,
-            order_data.get('total_discounts_tax_incl'),
-            order_data.get('total_discounts_tax_excl'),
-        )
+        self._create_discount_line(order, order_data['discount_data'])
 
         # 3. Creating Gift Wrapping Line
-        self._create_gift_line(integration, order, order_data)
+        self._create_gift_line(order, order_data['gift_data'])
 
         # 4. Check difference of total order amount and correct it
         #    !!! This block must be the last !!!
@@ -98,7 +91,7 @@ class IntegrationSaleOrderFactory(models.AbstractModel):
                 if not difference_product_id:
                     raise ApiImportError(_('Select Price Difference Product in Sale Integration'))
 
-                difference_line = self.env['sale.order.line'].create({
+                self.env['sale.order.line'].create({
                     'product_id': difference_product_id.id,
                     'order_id': order.id,
                     'price_unit': price_difference,
@@ -122,39 +115,38 @@ class IntegrationSaleOrderFactory(models.AbstractModel):
     @api.model
     def _prepare_order_vals(self, integration, order_data):
         partner, shipping, billing = self._create_customer(integration, order_data)
-
-        payment_method = self._get_payment_method(integration, order_data['payment_method'])
-
-        delivery_notes_field_name = integration.so_delivery_note_field.name
-        delivery_notes_value = order_data['delivery_notes'] or ''
-
-        if order_data.get('gift_wrapping') and order_data.get('gift_message'):
-            delivery_notes_value += _('\nMessage to write: %s') % order_data.get('gift_message')
-
-        amount_total = order_data.get('amount_total', False)
+        payment_method = self._get_payment_method(
+            integration,
+            order_data['payment_method'],
+        )
+        payment_method_external = payment_method.to_external_record(integration)
 
         order_line = []
         for line in order_data['lines']:
-            order_line.append((0, 0, self._prepare_order_line_vals(integration, line)))
+            line_vals = self._prepare_order_line_vals(integration, line)
+            order_line.append((0, 0, line_vals))
 
         order_vals = {
             'integration_id': integration.id,
-            'integration_amount_total': amount_total,
+            'integration_amount_total': order_data.get('amount_total', False),
             'partner_id': partner.id if partner else False,
             'partner_shipping_id': shipping.id if shipping else False,
             'partner_invoice_id': billing.id if billing else False,
             'order_line': order_line,
             'payment_method_id': payment_method.id,
-            delivery_notes_field_name: delivery_notes_value,
+            'payment_term_id': payment_method_external.payment_term_id.id,
         }
 
         if integration.so_external_reference_field:
             order_vals[integration.so_external_reference_field.name] = order_data['ref']
 
         if order_data.get('date_order'):
-            date_order = order_data['date_order']
-            data_converted = parser.isoparse(date_order)
-            order_vals['date_order'] = datetime.strftime(data_converted, DATETIME_FORMAT)
+            external_date_order = order_data['date_order']
+            external_date_parsed = parser.isoparse(external_date_order)
+            external_date_converted = integration._set_zero_time_zone(
+                external_date_parsed,
+            )
+            order_vals['date_order'] = external_date_converted
 
         current_state = order_data.get('current_order_state')
         if current_state:
@@ -435,7 +427,7 @@ class IntegrationSaleOrderFactory(models.AbstractModel):
 
         # Adding Company Specific fields
         if partner_data.get('company_name'):
-            partner_vals['company_name'] = partner_data.get('company_name')
+            partner_vals['external_company_name'] = partner_data['company_name']
 
         company_vat_field = integration.customer_company_vat_field
         if company_vat_field and partner_data.get('company_reg_number'):
@@ -580,69 +572,100 @@ class IntegrationSaleOrderFactory(models.AbstractModel):
 
         return carrier
 
-    def _create_delivery_line(self, integration, order, order_data):
-        if order_data['carrier'] and order_data['carrier'].get('id'):
-            carrier = self.try_get_odoo_delivery_carrier(integration, order_data['carrier'])
-            order.set_delivery_line(carrier, order_data['shipping_cost'])
+    def _create_delivery_line(self, order, delivery_data):
+        carrier = delivery_data['carrier'] or dict()
+        if not carrier.get('id'):
+            return
 
-            delivery_line = order.order_line.filtered(lambda line: line.is_delivery)
+        integration = order.integration_id
+        carrier = self.try_get_odoo_delivery_carrier(integration, carrier)
+        order.set_delivery_line(carrier, delivery_data['shipping_cost'])
 
-            if not delivery_line:
-                return
+        delivery_line = order.order_line.filtered(lambda line: line.is_delivery)
+        if not delivery_line:
+            return
 
-            taxes = self.get_taxes_from_external_list(
-                integration,
-                order_data.get('carrier_tax_ids', []),
+        taxes = self.get_taxes_from_external_list(
+            integration,
+            delivery_data.get('carrier_tax_ids', []),
+        )
+        tax_id = [(6, 0, taxes.ids)]
+
+        if delivery_data.get('carrier_tax_rate') == 0:
+            if not all(x.amount == 0 for x in taxes):
+                tax_id = False
+
+        delivery_line.tax_id = tax_id
+
+        if 'shipping_cost_tax_excl' in delivery_data:
+            if not self._get_tax_price_included(delivery_line.tax_id):
+                delivery_line.price_unit = delivery_data['shipping_cost_tax_excl']
+
+        if integration.so_delivery_note_field and delivery_data.get('delivery_notes'):
+            setattr(
+                order,
+                integration.so_delivery_note_field.name,
+                delivery_data['delivery_notes'],
             )
-            delivery_line.tax_id = [(6, 0, taxes.ids)]
 
-            if order_data.get('carrier_tax_rate') == 0:
-                if not all(x.amount == 0 for x in delivery_line.tax_id):
-                    delivery_line.tax_id = False
+    def _create_gift_line(self, order, gift_data):
+        if not gift_data.get('do_gift_wrapping'):
+            return
 
-            if 'shipping_cost_tax_excl' in order_data:
-                if not self._get_tax_price_included(delivery_line.tax_id):
-                    delivery_line.price_unit = order_data['shipping_cost_tax_excl']
+        integration = order.integration_id
+        if not integration.gift_wrapping_product_id:
+            raise ApiImportError(_(
+                'Gift Wrapping Product is empty. Please, feel it in '
+                'Sale Integration on the tab "Sale Order Defaults".'
+            ))
 
-    def _create_gift_line(self, integration, order, order_data):
-        if order_data.get('gift_wrapping'):
-            if not integration.gift_wrapping_product_id:
-                raise ApiImportError(_('Gift Wrapping Product is empty. Please, feel it in '
-                                       'Sale Integration on the tab "Sale Order Defaults"'))
+        gift_taxes = self.get_taxes_from_external_list(
+            integration,
+            gift_data.get('wrapping_tax_ids', []),
+        )
 
-            gift_taxes = self.get_taxes_from_external_list(
-                integration,
-                order_data.get('wrapping_tax_ids', []),
-            )
+        if self._get_tax_price_included(gift_taxes):
+            gift_price = gift_data.get('total_wrapping_tax_incl', 0)
+        else:
+            gift_price = gift_data.get('total_wrapping_tax_excl', 0)
 
-            if self._get_tax_price_included(gift_taxes):
-                gift_price = order_data.get('total_wrapping_tax_incl', 0)
-            else:
-                gift_price = order_data.get('total_wrapping_tax_excl', 0)
+        gift_line = self.env['sale.order.line'].create({
+            'product_id': integration.gift_wrapping_product_id.id,
+            'order_id': order.id,
+            'tax_id': gift_taxes.ids,
+            'price_unit': gift_price,
+        })
 
-            gift_line = self.env['sale.order.line'].create({
-                'product_id': integration.gift_wrapping_product_id.id,
-                'order_id': order.id,
-                'tax_id': gift_taxes.ids,
-                'price_unit': gift_price,
-            })
+        message = gift_data.get('gift_message')
+        if not message:
+            return
 
-            if order_data.get('gift_message'):
-                gift_line.name += _('\nMessage to write: %s') % order_data.get('gift_message')
+        message_to_write = _('\nMessage to write: %s') % message
+        gift_line.name += message_to_write
 
-    def _insert_line_in_order(self, integration, order, price_unit, tax_id):
+        note_field = integration.so_delivery_note_field
+        if note_field and note_field.name:
+            order_notes = getattr(order, note_field.name) or ''
+            delivery_notes = order_notes + message_to_write
+
+            setattr(order, note_field.name, delivery_notes)
+
+    def _insert_line_in_order(self, order, price_unit, tax_id):
         line = self.env['sale.order.line'].create({
-            'product_id': integration.discount_product_id.id,
+            'product_id': order.integration_id.discount_product_id.id,
             'order_id': order.id,
             'price_unit': price_unit,
             'tax_id': tax_id and tax_id.ids or False,
         })
         return line
 
-    def _create_discount_line(self, integration, order, discount_tax_incl, discount_tax_excl):
+    def _create_discount_line(self, order, discount_data):
+        discount_tax_incl = discount_data.get('total_discounts_tax_incl')
+        discount_tax_excl = discount_data.get('total_discounts_tax_excl')
         if not discount_tax_incl or not discount_tax_excl:
             return
 
+        integration = order.integration_id
         if not integration.discount_product_id:
             raise ApiImportError(_('Discount Product is empty. Please, feel it in '
                                    'Sale Integration on the tab "Sale Order Defaults"'))
@@ -659,7 +682,7 @@ class IntegrationSaleOrderFactory(models.AbstractModel):
         else:
             discount_price = discount_tax_excl * -1
 
-        discount_line = self._insert_line_in_order(integration, order, discount_price, False)
+        discount_line = self._insert_line_in_order(order, discount_price, False)
 
         # 1. Discount without taxes
         if float_is_zero(discount_taxes, precision_digits=precision):
@@ -752,7 +775,6 @@ class IntegrationSaleOrderFactory(models.AbstractModel):
         # 2.5 Create discount lines for discount
         for tax_value in the_most_suitable_discount:
             discount_lines += self._insert_line_in_order(
-                integration,
                 order,
                 tax_value['discount'],
                 tax_value['tax_id']
@@ -826,25 +848,33 @@ class IntegrationSaleOrderFactory(models.AbstractModel):
             payment.action_post()
 
     @api.model
-    def _get_payment_method(self, integration, ext_payment_method):
-        PaymentMethod = self.env['sale.order.payment.method']
+    def _get_payment_method(self, integration, external_code):
+        _name = 'sale.order.payment.method'
+        PaymentMethod = self.env[_name]
 
         payment_method = PaymentMethod.from_external(
-            integration, ext_payment_method, raise_error=False)
+            integration,
+            external_code,
+            raise_error=False,
+        )
 
         if not payment_method:
             payment_method = PaymentMethod.search([
-                ('name', '=', ext_payment_method),
+                ('name', '=', external_code),
                 ('integration_id', '=', integration.id),
             ])
 
             if not payment_method:
                 payment_method = PaymentMethod.create({
-                    'name': ext_payment_method,
+                    'name': external_code,
                     'integration_id': integration.id,
                 })
-            extra_vals = {'name': ext_payment_method}
-            self.env['integration.sale.order.payment.method.mapping'].create_integration_mapping(
-                integration, payment_method, ext_payment_method, extra_vals)
+
+            self.env[f'integration.{_name}.mapping'].create_integration_mapping(
+                integration,
+                payment_method,
+                external_code,
+                dict(name=external_code),
+            )
 
         return payment_method

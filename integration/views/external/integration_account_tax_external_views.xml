@@ -27,7 +27,7 @@
             <field name="binding_model_id" ref="integration.model_integration_account_tax_external"/>
             <field name="binding_view_types">list</field>
             <field name="state">code</field>
-            <field name="code">action = records.import_taxes()</field>
+            <field name="code">action = records.action_import_taxes_from_external()</field>
         </record>
 
     </data>

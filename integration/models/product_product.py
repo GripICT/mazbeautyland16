@@ -38,7 +38,7 @@ class ProductProduct(models.Model):
              'By default it syncs to all.',
     )
 
-    @api.model
+    @api.model_create_multi
     def create(self, vals_list):
         # We need to avoid calling export separately
         # from product.template and product.product
@@ -250,3 +250,8 @@ class ProductProduct(models.Model):
 
             adapter = integration._build_adapter()
             adapter.export_inventory(inventory)
+
+    def get_quant_integration_location_domain(self, integration):
+        locations = integration.get_integration_location()
+        domain_quant_loc, _, _ = self.with_context(location=locations.ids)._get_domain_locations()
+        return domain_quant_loc

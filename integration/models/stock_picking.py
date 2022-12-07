@@ -1,6 +1,6 @@
 # See LICENSE file for full copyright and licensing details.
 
-from odoo import models, fields
+from odoo import models, fields, _
 from odoo.tools import float_compare
 
 
@@ -16,6 +16,22 @@ class StockPicking(models.Model):
              'integration. And sometimes tracking reference is added to stock picking after it '
              'is validated and not at the same moment.',
     )
+
+    def write(self, vals):
+        # if someone add `carrier_tracking_ref` after picking validation
+        picking_done_ids = self.filtered(
+            lambda x: x.state == 'done' and not x.carrier_tracking_ref
+        )
+        res = super(StockPicking, self).write(vals)
+
+        picking_done_update_ids = picking_done_ids.filtered(
+            lambda x: x.state == 'done' and x.carrier_tracking_ref
+        )
+        for order in picking_done_update_ids.mapped('sale_id'):
+            if order.check_is_order_shipped():
+                order.order_export_tracking()
+
+        return res
 
     def to_export_format(self, integration):
         self.ensure_one()
@@ -51,11 +67,20 @@ class StockPicking(models.Model):
 
     def _auto_validate_picking(self):
         """Set quantities automatically and validate the pickings."""
-        for picking in self:
-            picking.action_assign()
+        ctx = {
+            'skip_immediate': True,
+            'skip_sms': True,
+            'skip_dispatch_to_external': True,  # TODO: make it dinamically in the future
+        }
+
+        for picking in self.filtered(lambda p: p.state == 'assigned'):
             for move in picking.move_ids.filtered(
                 lambda m: m.state not in ['done', 'cancel']
             ):
+                if not move.reserved_availability:
+                    return False, _('Not enough inventory to validate picking %s') \
+                        % picking.display_name
+
                 rounding = move.product_id.uom_id.rounding
                 if (
                     float_compare(
@@ -67,13 +92,22 @@ class StockPicking(models.Model):
                 ):
                     for move_line in move.move_line_ids:
                         move_line.qty_done = move_line.reserved_uom_qty
-            ctx = {
-                'skip_immediate': True,
-                'skip_sms': True,
-                'skip_export_tracking': True,
-            }
+
             picking.with_context(**ctx).button_validate()
-        return True
+
+            if self.filtered(lambda p: p.state == 'assigned'):
+                return self._auto_validate_picking()
+
+        if any(self.filtered(lambda p: p.state in ['waiting', 'confirmed'])):
+            return False, _('[%s] is not ready to be validated') % ', '.join(
+                self.filtered(lambda p: p.state == 'confirmed').mapped(
+                    'display_name'
+                )
+            )
+
+        return True, _('[%s] validated pickings successfully.') % ', '.join(
+            self.mapped('display_name')
+        )
 
     def button_validate(self):
         """
@@ -103,5 +137,5 @@ class StockPicking(models.Model):
             is_shipped = order.check_is_order_shipped()
 
             if is_shipped:
-                order._shipped_order_hook()
+                order._integration_shipped_order_hook()
                 order.order_export_tracking()

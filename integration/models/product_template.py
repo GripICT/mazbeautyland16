@@ -1,6 +1,7 @@
 # See LICENSE file for full copyright and licensing details.
 
 from ..tools import _guess_mimetype
+from ..models.sale_integration import EXPORT_EXTERNAL_BLOCK
 from .template_converter import TemplateConverter
 from odoo.exceptions import ValidationError, UserError
 from odoo import models, fields, api, _
@@ -169,7 +170,7 @@ class ProductTemplate(models.Model):
 
             rec.public_filter_categ_ids = [(6, 0, category_ids)]
 
-    @api.model
+    @api.model_create_multi
     def create(self, vals_list):
         # We need to avoid calling export separately
         # from product.template and product.product
@@ -294,13 +295,31 @@ class ProductTemplate(models.Model):
         if self.env.context.get('from_product_create'):
             export_images = True
 
-        # identity_key contains export_images flag because we want to be sure
-        # that we didn't skip exporting images if there is job with export_images=False
+        templates = self
+
+        # If 'manual_trigger' is set, then we need to not check 'export_template_job_enabled'.
+        manual_trigger = self.env.context.get('manual_trigger')
+
+        # if len(self) less then EXPORT_EXTERNAL_BLOCK we shouldn't create cron for block
+        use_jobs_for_blocks = len(self) > EXPORT_EXTERNAL_BLOCK
+
+        while templates:
+            templates_block = templates[:EXPORT_EXTERNAL_BLOCK]
+
+            if use_jobs_for_blocks:
+                templates_block = templates_block.with_delay(
+                    description='Export Template. Prepare Templates')
+
+            templates_block.trigger_export_by_block(
+                export_images, force_integration, manual_trigger)
+
+            templates = templates[EXPORT_EXTERNAL_BLOCK:]
+
+    def trigger_export_by_block(self, export_images, force_integration, manual_trigger):
         for template in self:
-            integrations = self.env['sale.integration'].get_integrations(
-                'export_template',
-                template.company_id,
-            )
+            name_job = '' if manual_trigger else 'export_template'
+            integrations = self.env['sale.integration']\
+                .get_integrations(name_job, template.company_id)
 
             if force_integration and force_integration in integrations:
                 integrations = force_integration
@@ -309,6 +328,8 @@ class ProductTemplate(models.Model):
             required_integrations = integrations.filtered(lambda x: x in variant_integrations)
 
             for integration in required_integrations:
+                # identity_key contains export_images flag because we want to be sure
+                # that we didn't skip exporting images if there is job with export_images=False
                 key = f'export_template_{integration.id}_{template.id}_{export_images}'
                 integration = integration.with_context(company_id=integration.company_id.id)
 
@@ -316,12 +337,12 @@ class ProductTemplate(models.Model):
                 # So user will know that there are mistakes
                 # Otherwise we skip validation at this stage as it will be called
                 # in Export Template job later
-                if self.env.context.get('manual_trigger'):
-                    self.validate_in_odoo(integration)
+                if manual_trigger:
+                    template.validate_in_odoo(integration)
 
                 delayable = integration.with_delay(
                     identity_key=key,
-                    description='Export Template',
+                    description='Export Template. Export Single Template',
                 )
                 if not integration.allow_export_images:
                     export_images = False

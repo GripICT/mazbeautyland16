@@ -48,60 +48,49 @@ class PrestashopWebhook(Controller, IntegrationWebhook):
             actionOrderHistoryAddAfter (Order Status Updated)
             actionValidateOrder (Order Created)
         """
-        _logger.info('Call prestashop webhook controller: receive_orders()')
-
-        self.set_integration(*args, **kw)
-
-        is_valid_webhook = self.verify_webhook(*args, **kw)
-        if not is_valid_webhook:
-            return
-
-        is_done_action = self._run_method_from_header()
-        return is_done_action
+        _logger.info('Call prestashop webhook controller: prestashop_receive_orders()')
+        return self._receive_order_generic(*args, **kw)
 
     def actionValidateOrder(self):
-        """
-        Order Created
-        Method is not implemented
-        """
-        _logger.info('Call prestashop webhook controller: actionValidateOrder()')
+        """Order Created"""
+        _logger.info(
+            'Call prestashop webhook controller: actionValidateOrder(). '
+            'Not Implemented.'
+        )
         pass
 
     def actionOrderHistoryAddAfter(self):
-        """
-        Order Status Updated
-        """
+        """Order Status Updated"""
         _logger.info('Call prestashop webhook controller actionOrderHistoryAddAfter()')
 
-        post_data = self._get_post_data()
-
-        order_code = post_data['order']['id']
-        reference = post_data['order']['reference']
-        order = self.env['sale.order'].from_external(self.integration, order_code, False)
-        if not order:
-            _logger.error(
-                'Prestashop Order not found, code=%s (reference=%s)', order_code, reference
-            )
-            return False
-
-        status_code = post_data['order']['current_state']
-        sub_status_id = self.env['sale.order.sub.status']\
-            .from_external(self.integration, status_code, False)
+        sub_status_id = self._get_order_sub_status('current_state')
         if not sub_status_id:
-            _logger.error('Sub status not found for code: %s' % status_code)
             return False
 
-        order.sub_status_id = sub_status_id
+        if sub_status_id == self.integration.sub_status_cancel_id:  # TODO: unnecessary `if`
+            return self._cancel_order_generic()
 
-        if self.integration.run_action_on_cancel_so \
-                and sub_status_id == self.integration.sub_status_cancel_id:
-            job_kwargs = order._build_workflow_job_kwargs()
-            job_kwargs['description'] = 'Integration Cancel Order'
+        return self._build_and_run_order_pipeline_generic()
 
-            order.with_delay(**job_kwargs)._integration_action_cancel()
-            return True
+    def get_shop_domain(self):
+        # TODO: now it's just a `stub`.
+        # Method returns what the `webhook validator` expect for.
+        # We need a header kind of the shopify `X-Shopify-Shop-Domain`
+        adapter = self.integration._build_adapter()
+        settings_url = adapter.get_settings_value('url')
+        return settings_url
 
-        return False
+    def _get_post_data(self):
+        res = super(PrestashopWebhook, self)._get_post_data()
+        return res.get('order', dict())
+
+    def _prepare_workflow_data(self):
+        post_data = self._get_post_data()
+        vals = {
+            'integration_workflow_states': [post_data['current_state']],
+            'payment_method': post_data['payment'],
+        }
+        return vals
 
     def _check_webhook_digital_sign(self, adapter):
         return True  # TODO
@@ -110,6 +99,10 @@ class PrestashopWebhook(Controller, IntegrationWebhook):
         headers = self._get_headers()
         header_name = self._get_hook_name_header()
         return headers[header_name]
+
+    @staticmethod
+    def _new_order_method_name():
+        return 'actionValidateOrder'
 
     @staticmethod
     def _get_hook_name_header():
@@ -126,11 +119,3 @@ class PrestashopWebhook(Controller, IntegrationWebhook):
             'X-Secure-Key',
             'X-Forwarded-Host',
         ]
-
-    def get_shop_domain(self):
-        # TODO: now it's just a `stub`.
-        # Method returns what the `webhook validator` expect for.
-        # We need a header kind of the shopify `X-Shopify-Shop-Domain`
-        adapter = self.integration._build_adapter()
-        settings_url = adapter.get_settings_value('url')
-        return settings_url

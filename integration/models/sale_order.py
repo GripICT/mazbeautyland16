@@ -2,14 +2,17 @@
 
 import logging
 from collections import defaultdict
+import base64
+import re
 
 from odoo import fields, models, api, _
 from odoo.tools.float_utils import float_compare
 from odoo.tools import float_is_zero
-from odoo.exceptions import UserError
+from odoo.exceptions import UserError, ValidationError
 
 from ...integration.exceptions import ApiImportError
 from .auto_workflow.integration_workflow_pipeline import SKIP, TO_DO
+from .external.integration_sale_order_payment_method_external import INV_VALIDATED
 
 _logger = logging.getLogger(__name__)
 
@@ -83,7 +86,8 @@ class SaleOrder(models.Model):
     def action_cancel(self):
         res = super(SaleOrder, self).action_cancel()
         if res is True:
-            self._cancel_order_hook()
+            for order in self:
+                order._integration_cancel_order_hook()
         return res
 
     def action_integration_pipeline_form(self):
@@ -136,6 +140,9 @@ class SaleOrder(models.Model):
 
         result = super().write(vals)
 
+        if self.env.context.get('skip_dispatch_to_external'):
+            return result
+
         if vals.get('sub_status_id'):
             for order in self:
                 if statuses_before_write[order] == order.sub_status_id:
@@ -148,10 +155,14 @@ class SaleOrder(models.Model):
                 if not integration.job_enabled('export_sale_order_status'):
                     continue
 
-                key = f'export_sale_order_status_{order.id}'
-                integration.with_context(company_id=integration.company_id.id).with_delay(
-                    identity_key=key
-                ).export_sale_order_status(order)
+                job_kwargs = {
+                    'identity_key': f'export_sale_order_status_{order.id}',
+                    'description': (
+                        f'Export Sale Order [{order.id}] sub-status: {order.sub_status_id.name}'
+                    ),
+                }
+                integration.with_context(company_id=integration.company_id.id)\
+                    .with_delay(**job_kwargs).export_sale_order_status(order)
 
         return result
 
@@ -173,35 +184,64 @@ class SaleOrder(models.Model):
             reference_list = order.related_input_files.mapped('order_reference')
             order.external_sales_order_ref = ', '.join(reference_list) or ''
 
-    def _cancel_order_hook(self):
-        for order in self:
-            if order.integration_id.run_action_on_cancel_so:
-                method_name = '_%s_cancel_order' % order.integration_id.type_api
-                if hasattr(order, method_name):
-                    getattr(order, method_name)()
-                else:
-                    _logger.warning("No method found with name '%s'" % method_name)
-
-    def _shipped_order_hook(self):
-        """
-        This method is called when the order is shipped.
-        """
+    def _integration_cancel_order_hook(self):
         self.ensure_one()
+        result = None
+        if not self.integration_id:
+            return result
+
+        if self.integration_id.run_action_on_cancel_so:
+            result = self._perform_method_by_name(f'_{self.type_api}_cancel_order')
+        return result
+
+    def _integration_shipped_order_hook(self):
+        self.ensure_one()
+        result = None
+        if not self.integration_id:
+            return result
 
         if self.integration_id.run_action_on_shipping_so:
-            method_name = '_%s_shipped_order' % self.integration_id.type_api
-            if hasattr(self, method_name):
-                func = getattr(self, method_name)
-                if callable(func):
-                    func()
-            else:
-                _logger.warning("No method found with name '%s'" % method_name)
+            result = self._perform_method_by_name(f'_{self.type_api}_shipped_order')
+        return result
+
+    def _integration_validate_invoice_order_hook(self):
+        self.ensure_one()
+        result = None
+        if not self.integration_id:
+            return result
+
+        invoice_full_validated = all(x.state == 'posted' for x in self.invoice_ids)
+        payment_method_external = self.payment_method_id.to_external_record(self.integration_id)
+        action_after_validation = payment_method_external.send_payment_status_when == INV_VALIDATED
+
+        if invoice_full_validated and action_after_validation:
+            _logger.info(
+                '%s: force export paid status for %s to external.', self.integration_id.name, self
+            )
+            result = self.with_context(force_export_paid_status=True)._integration_paid_order_hook()
+        return result
+
+    def _integration_paid_order_hook(self):
+        self.ensure_one()
+        result = None
+        if not self.integration_id:
+            return result
+
+        if self.integration_id.run_action_on_so_invoice_status:
+            invoice_full_paid = all(
+                x.payment_state in ('paid', 'in_payment') for x in self.invoice_ids
+            )
+            action_after_paid = invoice_full_paid or self._context.get('force_export_paid_status')
+
+            if self.invoice_status == 'invoiced' and action_after_paid:
+                result = self._perform_method_by_name(f'_{self.type_api}_paid_order')
+        return result
 
     def order_export_tracking(self):
         self.ensure_one()
         # only send for Done pickings that were not exported yet
         # and if this is final Outgoing picking OR dropship picking
-        if self.env.context.get('skip_export_tracking'):
+        if self.env.context.get('skip_dispatch_to_external'):
             return False
 
         integration = self.integration_id
@@ -230,8 +270,18 @@ class SaleOrder(models.Model):
 
         return integration.with_delay(identity_key=key).export_tracking(done_pickings)
 
-    def _run_integration_workflow(self, order_data, input_file_id=False):
+    def _prepare_vals_for_sale_order_status(self):
+        integration = self.integration_id
+        order_id = self.to_external(integration)
+        status = self.sub_status_id.to_external(integration)
+        return {
+            'order_id': order_id,
+            'status': status,
+        }
+
+    def _build_and_run_integration_workflow(self, order_data, input_file_id=False):
         self.ensure_one()
+        _logger.info('Create new (or use existing) %s pipeline', self)
         pipeline = self.integration_pipeline
 
         if not pipeline:
@@ -327,34 +377,33 @@ class SaleOrder(models.Model):
         return [(x[0], x[1]) for x in task_list], pipeline_vals
 
     def _create_invoices(self, grouped=False, final=False, date=None):
-        for order in self:
-            if not order.env.context.get('_invoice_service_delivery'):
-                continue
-            for line in order.order_line:
-                if line.qty_delivered_method == 'manual' and not line.qty_delivered:
-                    line.write({'qty_delivered': line.product_uom_qty})
+        if self.env.context.get('from_integration_workflow'):
+            for order in self:
+                for line in order.order_line:
+                    if line.qty_delivered_method == 'manual' and not line.qty_delivered:
+                        line.write({'qty_delivered': line.product_uom_qty})
+
         return super(SaleOrder, self)._create_invoices(grouped=grouped, final=final, date=date)
 
     def _prepare_invoice(self):
         invoice_vals = super(SaleOrder, self)._prepare_invoice()
-        pipeline = self.integration_pipeline
 
-        if not pipeline:
-            return invoice_vals
+        if self.env.context.get('from_integration_workflow'):
+            pipeline = self.integration_pipeline
 
-        if pipeline.force_invoice_date:
-            invoice_date = fields.Date.context_today(self, self.date_order)
-            invoice_vals['invoice_date'] = invoice_date
+            if pipeline.force_invoice_date:
+                invoice_date = fields.Date.context_today(self, self.date_order)
+                invoice_vals['invoice_date'] = invoice_date
 
-        if not pipeline.invoice_journal_id:
-            raise UserError(_(
-                'No Invoice Journal defined for Create Invoice Method. '
-                'Please, define it in menu "e-Commerce Integration -> Auto-Workflow -> '
-                'Order Statuses" in the "Invoice Journal" column for %s %s.'
-                % (self.integration_id.name, pipeline.sub_state_external_ids.mapped('code'))
-            ))
+            if not pipeline.invoice_journal_id:
+                raise UserError(_(
+                    'No Invoice Journal defined for Create Invoice Method. '
+                    'Please, define it in menu "e-Commerce Integration -> Auto-Workflow -> '
+                    'Order Statuses" in the "Invoice Journal" column for %s %s.'
+                    % (self.integration_id.name, pipeline.sub_state_external_ids.mapped('code'))
+                ))
 
-        invoice_vals['journal_id'] = pipeline.invoice_journal_id.id
+            invoice_vals['journal_id'] = pipeline.invoice_journal_id.id
 
         return invoice_vals
 
@@ -374,27 +423,19 @@ class SaleOrder(models.Model):
 
         pickings = self.picking_ids.filtered(lambda x: x.state not in ('done', 'cancel'))
         if not pickings:
-            return True, _('There are no pickings awaiting validation.')
+            return True, _('[%s] There are no pickings awaiting validation.') % self.display_name
 
-        result = pickings._auto_validate_picking()
-        return result, _('[%s] %s validated pickings successfully.') % (self, self.picking_ids)
+        result, message = pickings._auto_validate_picking()
+        return result, '[%s] %s' % (self.display_name, message)
 
     def _integration_create_invoice(self):  # TODO: what should we do if nothing to invoice
         _logger.info('Run integration auto-workflow create_invoice')
         self.ensure_one()
 
-        ctx = {
-            'active_ids': self.ids,
-            'active_model': self._name,
-        }
-        advance_payment_wizard = self.env['sale.advance.payment.inv']\
-            .with_context(**ctx).create({})
-        result = advance_payment_wizard.\
-            with_context(_invoice_service_delivery=True).create_invoices()
+        result = self.with_context(from_integration_workflow=True)._create_invoices(final=True)
 
-        if isinstance(result, dict) and result.get('type') == 'ir.actions.act_window_close':
-            return True, _('[%s] %s created invoices successfully.') % (self, self.invoice_ids)
-        return result, ''
+        message = _('[%s] %s created invoices successfully.') % (self, result) if result else ''
+        return bool(result), message
 
     def _integration_validate_invoice(self):
         _logger.info('Run integration auto-workflow validate_invoice')
@@ -435,6 +476,10 @@ class SaleOrder(models.Model):
         if result is True:
             message = _('Order [%s] %s has been successfully cancelled.', order.display_name, self)
         return result, message
+
+    def _integration_action_cancel_no_dispatch(self):
+        ctx = dict(skip_dispatch_to_external=True)
+        return self.with_context(**ctx)._integration_action_cancel()
 
     def _integration_register_payment_one(self, invoice):
         if invoice.payment_state in ('paid', 'in_payment'):
@@ -495,3 +540,87 @@ class SaleOrder(models.Model):
         payment_dict['journal_id'] = pipeline.payment_journal_id.id
 
         return payment_dict
+
+    def _prepare_confirmation_values(self):
+        res = super()._prepare_confirmation_values()
+        if self.integration_id:
+            res.update({
+                'date_order': self.date_order,
+            })
+        return res
+
+    def _prepare_pdf_invoice(self):
+        self.ensure_one()
+
+        code = 0
+        message = ''
+        data = []
+
+        if self.state not in ('sale', 'done'):
+            code, message = 1, f'Order {self.display_name} is not confirmed yet.'
+            return code, message, data
+
+        if not self.invoice_ids:
+            if self.invoice_status != 'to invoice':
+                code = 1
+                message = 'Order %s has no invoices and hasn\'t status "to invoice".' \
+                          % self.display_name
+                return code, message, data
+
+        # Create invoice if it is not created yet
+        if self.invoice_status == 'to invoice':
+            try:
+                invoice_created = self._create_invoices(final=True)
+                if not invoice_created:
+                    code, message = 1, 'Invoice creation error'
+                    return code, message, data
+
+            except (ValidationError, UserError) as e:
+                code, message = 1, e.args[0]
+                return code, message, data
+
+            except Exception as e:
+                code, message = 1, e.args[0]
+                return code, message, data
+
+        # Validate invoice if it is not validated yet
+        try:
+            invoice_validated, _ = self._integration_validate_invoice()
+            if not invoice_validated:
+                code, message = 1, 'Invoice validation error'
+                return code, message, data
+
+        except (ValidationError, UserError) as e:
+            code, message = 1, e.args[0]
+            return code, message, data
+
+        except Exception as e:
+            code, message = 1, e.args[0]
+            return code, message, data
+
+        for invoice in self.invoice_ids:
+            report_template = self.env.ref('account.account_invoices')
+            invoice_pdf = report_template._render_qweb_pdf(invoice.id)[0]
+            invoice_pdf_name = re.sub(r'\W+', '', invoice.name) + '.pdf'
+
+            access_token = self.env['ir.attachment']._generate_access_token()
+            attachment = self.env['ir.attachment'].create({
+                'name': invoice_pdf_name,
+                'type': 'binary',
+                'datas': base64.b64encode(invoice_pdf),
+                'res_model': 'sale.order',
+                'res_id': self.id,
+                'mimetype': 'application/x-pdf',
+                'access_token': access_token,
+            })
+
+            base_url = self.env['ir.config_parameter'].get_param('web.base.url')
+            url_open = f'%s/web/content/%s?download=True&access_token=%s' \
+                       % (base_url, attachment.id, access_token)
+            data.append({
+                'name': invoice_pdf_name,
+                'link': url_open,
+            })
+            message = 'Link to invoice PDF file has been successfully generated.'
+
+        return code, message, data

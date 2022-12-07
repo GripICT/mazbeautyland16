@@ -19,7 +19,7 @@ class IntegrationMappingMixin(models.AbstractModel):
         self.requeue_jobs_if_needed()
         return result
 
-    @api.model
+    @api.model_create_multi
     def create(self, vals):
         result = super().create(vals)
         result.requeue_jobs_if_needed()

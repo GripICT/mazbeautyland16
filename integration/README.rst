@@ -6,6 +6,19 @@ Change Log
 
 |
 
+* 1.9.0 (2022-11-XX)
+    - NEW! Add a setting to send products from Odoo on initial export in “inactive“ status, so they can be reviewed and published manually.
+    - NEW! Mark Sales Order as Paid on e-Commerce System in case all related invoices are Paid.
+    - NEW! Allow defining payment terms that will be used instead of the standard.
+    - Improve connector to allow exporting more then 10K products
+    - Added new field on the customer to have Company Name. This field is also used when displaying customer address on Odoo and on printed forms
+    - Fix for applying discounts from Shopify.
+    - Fix for performing automatic workflow tasks manually in a standard way.
+    - Now order date is the same in external system and in Odoo. Taking into account sales order time zone.
+    - Added controller to allow retrieving PDF Invoices from Odoo with API Key by external system Order ID.
+    - Fix auto-workflow action “Validate Picking“ not validating pickings in case of multi-step delivery.
+    - Force sending products to the external e-Commerce system is now working also if automatic products export from Odoo is disabled.
+
 * 1.8.4 (2022-11-25)
     - Fixed import or products when there are duplicate product attributes
 

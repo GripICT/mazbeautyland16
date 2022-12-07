@@ -31,8 +31,7 @@
                 </xpath>
                 <field name="payment_term_id" position="after">
                     <field name="type_api" invisible="1" />
-                    <field name="sub_status_id"
-                           attrs="{'invisible':['|', ('type_api', '!=', 'prestashop'), ('integration_id', '=', False)]}"/>
+                    <field name="sub_status_id"/>
                     <field name="payment_method_id" attrs="{'invisible': [('integration_id', '=', False)]}"/>
                 </field>
                 <notebook position="inside">

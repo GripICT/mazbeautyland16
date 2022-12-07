@@ -3,8 +3,8 @@
 import logging
 
 from odoo import models, fields, _
+from odoo.exceptions import UserError, ValidationError
 from odoo.addons.integration.tools import raise_requeue_job_on_concurrent_update
-from odoo.exceptions import UserError
 
 
 _logger = logging.getLogger(__name__)
@@ -25,7 +25,6 @@ PIPELINE_STATE = [
 
 
 class IntegrationWorkflowPipelineLine(models.Model):
-
     _name = 'integration.workflow.pipeline.line'
     _description = 'Integration Workflow Pipeline Line'
 
@@ -58,6 +57,9 @@ class IntegrationWorkflowPipelineLine(models.Model):
         string='Pipeline',
         ondelete='cascade',
     )
+    skip_dispatch = fields.Boolean(
+        related='pipeline_id.skip_dispatch',
+    )
 
     def _compute_name(self):
         for rec in self:
@@ -69,10 +71,11 @@ class IntegrationWorkflowPipelineLine(models.Model):
 
         self._validate_previous()
 
-        order_method_name = f'_integration_{self.current_step_method}'
-        order_method = getattr(self.order_id, order_method_name)
+        order_method = self._retrieve_current_order_method()
+        result, message = order_method()
 
-        result, __ = order_method()
+        if result is False:
+            self._failed_job_manually(message)
 
         self.state = DONE if result is True else FAILED
         return self.pipeline_id.open_form()
@@ -81,32 +84,50 @@ class IntegrationWorkflowPipelineLine(models.Model):
         if self.state not in (SKIP, DONE):
             self.state = IN_PROCESS
 
-        job_kwargs = {
+        job_kwargs = self._build_task_job_kwargs()
+
+        return self.with_delay(**job_kwargs)._run_and_call_next()
+
+    def _failed_job_manually(self, message):
+        job_kwargs = self._build_task_job_kwargs()
+        return self.with_delay(**job_kwargs)._raise_job(message)
+
+    def _build_task_job_kwargs(self):
+        return {
             'channel': self.env.ref('integration.channel_sale_order').complete_name,
             'identity_key': f'integartion_pipeline_task-{self.integration_id.id}-{self}',
             'description': 'Integartion Workflow Line: '
-            + f'[{self.integration_id.id}][{self.order_id.display_name}] {self.name}',
+            + f'[{self.integration_id.id}] [{self.order_id.display_name}] {self.name}',
         }
-        return self.with_delay(**job_kwargs)._run_and_call_next()
+
+    def _raise_job(self, message):
+        raise ValidationError(message)
 
     @raise_requeue_job_on_concurrent_update
     def _run_and_call_next(self):
         if self.state in (SKIP, DONE):
-            self.pipeline_id._call_next_step(self.next_step_method)
+            self.pipeline_id._call_pipeline_step(self.next_step_method)
             return _('Task was skipped.')
 
-        order_method_name = f'_integration_{self.current_step_method}'
-        order_method = getattr(self.order_id, order_method_name)
-
+        order_method = self._retrieve_current_order_method()
         result, message = order_method()
 
         if result is True:
             self.state = DONE
-            self.pipeline_id._call_next_step(self.next_step_method)
+            self.pipeline_id._call_pipeline_step(self.next_step_method)
             return message
+
+        if result is False:
+            self._failed_job_manually(message)
 
         self.state = FAILED
         return result
+
+    def _retrieve_current_order_method(self):
+        order = self.order_id
+        if self.skip_dispatch:
+            order = order.with_context(skip_dispatch_to_external=True)
+        return getattr(order, f'_integration_{self.current_step_method}')
 
     def _validate_previous(self):
         states = self.pipeline_id.pipeline_task_ids\
@@ -119,7 +140,6 @@ class IntegrationWorkflowPipelineLine(models.Model):
 
 
 class IntegrationWorkflowPipeline(models.Model):
-
     _name = 'integration.workflow.pipeline'
     _description = 'Integration Workflow Pipeline'
 
@@ -161,6 +181,9 @@ class IntegrationWorkflowPipeline(models.Model):
         inverse_name='pipeline_id',
         string='Pipeline Tasks',
     )
+    skip_dispatch = fields.Boolean(
+        string='Skip Dispatch',
+    )
 
     def _compute_invoice_journal(self):
         for rec in self:
@@ -191,9 +214,9 @@ class IntegrationWorkflowPipeline(models.Model):
 
         return task_to_run.run_with_delay()
 
-    def _call_next_step(self, next_step_name):
+    def _call_pipeline_step(self, step_name):
         task_to_run = self.pipeline_task_ids\
-            .filtered(lambda x: x.current_step_method == next_step_name)
+            .filtered(lambda x: x.current_step_method == step_name)
 
         if not task_to_run:
             return _('Workflow Done!')
@@ -202,6 +225,30 @@ class IntegrationWorkflowPipeline(models.Model):
 
     def _tasks_info(self):
         return [(x.name, x.state) for x in self.pipeline_task_ids]
+
+    def _update_and_re_run_pipeline(self, order_data):
+        _logger.info('Update existing order pipeline %s', self)
+
+        order = self.order_id
+        task_list, pipeline_vals = order._build_task_list_and_vals(order_data)
+        sub_state_ids = pipeline_vals['sub_state_external_ids'][0][-1]
+        self.write({
+            'sub_state_external_ids': [(4, x, 0) for x in sub_state_ids],
+            'skip_dispatch': self._context.get('default_skip_dispatch', False),
+        })
+
+        pipeline_task_ids = self.pipeline_task_ids
+
+        for task_name, task_enable in task_list:
+            task = pipeline_task_ids.filtered(
+                lambda x: x.current_step_method == task_name
+            )
+            if task and task.state != DONE and task_enable:
+                task.state = TO_DO
+                _logger.info('Pipeline task "%s" was marked as "%s".', task_name, TO_DO)
+
+        job_kwargs = order._build_workflow_job_kwargs()
+        return self.with_delay(**job_kwargs).trigger_pipeline()
 
     def open_form(self):
         return {

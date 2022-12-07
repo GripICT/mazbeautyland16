@@ -31,11 +31,9 @@ class IntegrationAccountTaxMapping(models.Model):
 
     # TODO: add constain
 
-    def import_taxes(self):
-        tax_external = self.mapped('external_tax_id')
-
-        if tax_external:
-            return tax_external.import_taxes()
+    def action_import_taxes_from_mapping(self):
+        tax_external_ids = self.filtered(lambda x: not x.tax_id).mapped('external_tax_id')
+        return tax_external_ids.action_import_taxes_from_external()
 
     def _fix_unmapped_tax_one(self, external_data=None):
         self.ensure_one()
@@ -46,8 +44,9 @@ class IntegrationAccountTaxMapping(models.Model):
             return tax_id
 
         integration = self.integration_id
-        if not integration.auto_create_taxes_on_so:
-            return False
+        if not self.env.context.get('force_create_tax'):
+            if not integration.auto_create_taxes_on_so:
+                return False
 
         if not external_data:
             return tax_id
@@ -76,7 +75,7 @@ class IntegrationAccountTaxMapping(models.Model):
 
         domain = [
             ('type_tax_use', '=', 'sale'),
-            ('amount_type', '=' , 'percent'),
+            ('amount_type', '=', 'percent'),
             ('name', '=ilike', escape_psql(self.external_tax_id.name)),
             ('company_id', '=', self.integration_id.company_id.id),
             ('integration_id', 'in', [self.integration_id.id, False]),

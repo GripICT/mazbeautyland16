@@ -6,7 +6,7 @@ from odoo import models, api
 class MrpBom(models.Model):
     _inherit = 'mrp.bom'
 
-    @api.model
+    @api.model_create_multi
     def create(self, vals_list):
         boms = super(MrpBom, self).create(vals_list)
         boms._trigger_kit_template_export()

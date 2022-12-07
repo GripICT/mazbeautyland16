@@ -98,13 +98,23 @@ class QuickConfigurationPrestashop(models.TransientModel):
         string='Run Action on Shipping SO',
         help='Select if you would like run action on shipping SO.',
     )
-
     sub_status_shipped_id = fields.Many2one(
         comodel_name='sale.order.sub.status',
         string='Shipped Orders Sub-Status',
         domain='[("integration_id", "=", integration_id)]',
         copy=False,
         help='Sub-status that can be set after shipped SO',
+    )
+    run_action_on_so_invoice_status = fields.Boolean(
+        string='Run Action on Invoiced or Paid SO',
+        help='Select if you would like run action on paid SO.',
+    )
+    sub_status_paid_id = fields.Many2one(
+        comodel_name='sale.order.sub.status',
+        string='Paid Orders Sub-Status',
+        domain='[("integration_id", "=", integration_id)]',
+        copy=False,
+        help='Sub-status that can be set after paid SO',
     )
 
     # Step Url
@@ -162,6 +172,9 @@ class QuickConfigurationPrestashop(models.TransientModel):
         self.run_action_on_shipping_so = self.integration_id.run_action_on_shipping_so
         self.sub_status_shipped_id = self.integration_id.sub_status_shipped_id
 
+        self.run_action_on_so_invoice_status = self.integration_id.run_action_on_so_invoice_status
+        self.sub_status_paid_id = self.integration_id.sub_status_paid_id
+
     def run_after_step_order_status(self):
         if not self.order_status_ids:
             raise UserError(_('You should select order sub-statuses'))
@@ -175,9 +188,11 @@ class QuickConfigurationPrestashop(models.TransientModel):
 
         self.integration_id.run_action_on_cancel_so = self.run_action_on_cancel_so
         self.integration_id.run_action_on_shipping_so = self.run_action_on_shipping_so
+        self.integration_id.run_action_on_so_invoice_status = self.run_action_on_so_invoice_status
 
         self.integration_id.sub_status_cancel_id = self.sub_status_cancel_id
         self.integration_id.sub_status_shipped_id = self.sub_status_shipped_id
+        self.integration_id.sub_status_paid_id = self.sub_status_paid_id
 
         if self.sub_status_cancel_id or self.sub_status_shipped_id:
             self.integration_id.export_sale_order_status_job_enabled = True

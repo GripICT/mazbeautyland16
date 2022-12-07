@@ -6,7 +6,7 @@ from odoo import api, models
 class StockQuant(models.Model):
     _inherit = 'stock.quant'
 
-    @api.model
+    @api.model_create_multi
     def create(self, vals_list):
         quants = super(StockQuant, self).create(vals_list)
         quants.trigger_export()

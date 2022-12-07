@@ -50,6 +50,12 @@ class IntegrationSaleOrderFactory(models.AbstractModel):
                         customer_registration_date = False
                     vals[customer_registration_date_field.name] = customer_registration_date
 
+            other_value = partner_data.get('other')
+            if other_value:
+                additional_address_information_field = integration.additional_address_information
+                if additional_address_information_field:
+                    vals[additional_address_information_field.name] = other_value
+
             if vals:
                 partner.write(vals)
 

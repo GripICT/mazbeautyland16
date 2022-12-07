@@ -2,11 +2,7 @@
 
 import logging
 
-from odoo.tools.sql import escape_psql
-from odoo.exceptions import UserError
-from odoo import models, fields, _
-
-from ...tools import IS_FALSE
+from odoo import models, fields
 
 
 _logger = logging.getLogger(__name__)
@@ -55,54 +51,33 @@ class IntegrationAccountTaxExternal(models.Model):
 
         odoo_model.create_or_update_mapping(self.integration_id, None, self)
 
-    def import_taxes(self):
-        integrations = self.mapped('integration_id')
-
-        for integration in integrations:
-            external_values = integration._build_adapter().get_taxes()
+    def action_import_taxes_from_external(self):
+        for integration in self.mapped('integration_id'):
+            adapter_data_list = integration._build_adapter().get_taxes()
 
             for tax in self.filtered(lambda x: x.integration_id == integration):
-                tax.import_tax(external_values)
+                tax.import_tax(adapter_data_list)
 
-    def import_tax(self, external_values):
+    def import_tax(self, adapter_data_list):
         self.ensure_one()
-
-        Tax = self.odoo_model
-        MappingTax = self.mapping_model
-
-        # Try to find existing and mapped tax
-        mapping = MappingTax.search([('external_tax_id', '=', self.id)])
-        odoo_tax = Tax
-
-        # If mapping doesn`t exists try to find tax by the name
-        if not mapping or not mapping.tax_id:
-            if Tax.search([('name', '=ilike', escape_psql(self.name))]):
-                raise UserError(_('Tax with name "%s" already exists') % self.name)
-        else:
-            odoo_tax = mapping.tax_id
-
         # in case we only receive 1 record its not added to list as others
-        if not isinstance(external_values, list):
-            external_values = [external_values]
+        if not isinstance(adapter_data_list, list):
+            adapter_data_list = [adapter_data_list]
 
         # Find tax in external and children of our tax
-        external_value = [x for x in external_values if x['id'] == self.code]
+        adapter_data = [x for x in adapter_data_list if x['id'] == self.code]
+        adapter_data = adapter_data and adapter_data[0]
+        if not adapter_data:
+            return
 
-        if external_value:
-            external_value = external_value[0]
-
-            odoo_tax = self.create_or_update_with_translation(
-                integration=self.integration_id,
-                odoo_object=odoo_tax,
-                vals={
-                    'name': external_value['name'],
-                    'amount': float(external_value.get('rate', IS_FALSE)),
-                    'type_tax_use': 'sale',
-                    'integration_id': self.integration_id.id,
-                },
-            )
-
-            MappingTax.create_or_update_mapping(self.integration_id, odoo_tax, self)
+        mapping = self.mapping_model.create_or_update_mapping(
+            self.integration_id,
+            None,
+            self,
+        )
+        mapping = mapping.with_context(force_create_tax=True)
+        tax = mapping._fix_unmapped_tax_one(external_data=adapter_data)
+        return tax
 
     def _post_import_external_one(self, adapter_external_record):
         """

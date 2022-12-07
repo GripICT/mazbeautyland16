@@ -27,6 +27,9 @@ class IntegrationExternalMixin(models.AbstractModel):
         required=True,
         ondelete='cascade',
     )
+    company_id = fields.Many2one(
+        related='integration_id.company_id',
+    )
     type_api = fields.Selection(
         related='integration_id.type_api',
     )
@@ -71,7 +74,7 @@ class IntegrationExternalMixin(models.AbstractModel):
         self.requeue_jobs_if_needed()
         return result
 
-    @api.model
+    @api.model_create_multi
     def create(self, vals):
         result = super().create(vals)
         result.requeue_jobs_if_needed()

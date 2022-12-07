@@ -1228,11 +1228,11 @@ class PrestaShopApiClient(AbsApiClient):
         messages = input_file['messages']
         payment_transactions = input_file['payment_transactions']
 
-        delivery_notes = False
-
+        delivery_notes = ''
         if messages:
-            delivery_notes_list = \
-                [msg.get('message') for msg in messages if msg.get('private') == IS_FALSE]
+            delivery_notes_list = [
+                msg.get('message') for msg in messages if msg.get('private') == IS_FALSE
+            ]
             delivery_notes = '\n'.join(delivery_notes_list)
 
         order_rows = order['associations']['order_rows']['order_row']
@@ -1270,26 +1270,32 @@ class PrestaShopApiClient(AbsApiClient):
             'lines': [self._parse_order_row(order['id'], x) for x in order_rows],
             'payment_method': order['payment'],
             'payment_transactions': payment_transactions,
-            'carrier': {'id': order['id_carrier'], 'name': ''},
-            'shipping_cost': float(order['total_shipping']),
-            'shipping_cost_tax_excl': float(order['total_shipping_tax_excl']),
-            'delivery_notes': delivery_notes,
-            'total_discounts_tax_incl': float(order['total_discounts_tax_incl']),
-            'total_discounts_tax_excl': float(order['total_discounts_tax_excl']),
             'amount_total': (
                 float(order['total_products_wt']) + float(order['total_shipping_tax_incl'])
                 + float(order['total_wrapping_tax_incl']) - float(order['total_discounts_tax_incl'])
             ),
-            'carrier_tax_rate': float(order['carrier_tax_rate']),
-            'carrier_tax_ids': carrier_tax_ids,
-            'carrier_tax_behavior': carrier_tax_behavior,  # TODO: what we have to do with that..
-            'recycled_packaging': order['recyclable'] == '1',  # TODO: add option to order in future
-            'gift_wrapping': order['gift'] == '1',
-            'gift_message': order['gift_message'],
-            'total_wrapping_tax_incl': float(order['total_wrapping_tax_incl']),
-            'total_wrapping_tax_excl': float(order['total_wrapping_tax_excl']),
-            'wrapping_tax_ids': wrapping_tax_ids,
-            'wrapping_tax_behavior': wrapping_tax_behavior,  # TODO: what we have to do with that..
+            'delivery_data': {
+                'delivery_notes': delivery_notes,
+                'shipping_cost_tax_excl': float(order['total_shipping_tax_excl']),
+                'carrier': {'id': order['id_carrier'], 'name': ''},
+                'shipping_cost': float(order['total_shipping']),
+                'carrier_tax_rate': float(order['carrier_tax_rate']),
+                'carrier_tax_ids': carrier_tax_ids,
+                'carrier_tax_behavior': carrier_tax_behavior,  # TODO: what we have to do with that
+            },
+            'discount_data': {
+                'total_discounts_tax_incl': float(order['total_discounts_tax_incl']),
+                'total_discounts_tax_excl': float(order['total_discounts_tax_excl']),
+            },
+            'gift_data': {
+                'do_gift_wrapping': order['gift'] == '1',
+                'gift_message': order['gift_message'],
+                'wrapping_tax_ids': wrapping_tax_ids,
+                'total_wrapping_tax_incl': float(order['total_wrapping_tax_incl']),
+                'total_wrapping_tax_excl': float(order['total_wrapping_tax_excl']),
+                'wrapping_tax_behavior': wrapping_tax_behavior,  # TODO: what we have to do with ?
+                'recycled_packaging': order['recyclable'] == '1',  # TODO: handle in future
+            },
         }
 
         if customer:
@@ -1339,6 +1345,7 @@ class PrestaShopApiClient(AbsApiClient):
             'zip': address['postcode'],
             'phone': address['phone'],
             'mobile': address['phone_mobile'],
+            'other': address['other'],
         }
 
         if customer.get('id_lang'):
@@ -1412,10 +1419,13 @@ class PrestaShopApiClient(AbsApiClient):
         result = order_carrier.save()
         return result
 
-    def export_sale_order_status(self, order_id, status):
+    def export_sale_order_status(self, vals):
+        status = vals['status']
+        order_id = vals['order_id']
+
         order = self._client.model('order').get(order_id)
         order.current_state = status
-        order.save()
+        return order.save()
 
     def _import_template_custom_field_hook(self, presta_template, template_vals):
         # This method is a hook method that allows

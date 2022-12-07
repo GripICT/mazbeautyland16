@@ -6,6 +6,7 @@ from odoo.exceptions import ValidationError
 from odoo.addons.integration.models.sale_integration import DATETIME_FORMAT
 
 import pytz
+from datetime import datetime
 
 
 class SaleIntegration(models.Model):
@@ -84,6 +85,13 @@ class SaleIntegration(models.Model):
              'Prestashop field Registration Date.',
         domain='[("model_id.model", "=", "res.partner"), ("ttype", "=", "datetime")]',
         default=lambda self: self._get_field_for_set_default('customer_registration_date_presta'),
+    )
+
+    additional_address_information = fields.Many2one(
+        string='Field to record additional address information',
+        comodel_name='ir.model.fields',
+        help='Define here field name belonging to Customer (only Char/Text fields accepted)',
+        domain='[("model_id.model", "=", "res.partner"), ("ttype", "in", ("char", "text"))]',
     )
 
     def is_carrier_tracking_required(self):
@@ -183,13 +191,6 @@ class SaleIntegration(models.Model):
 
         return data
 
-    def _should_link_parent_contact(self):
-        if self.is_prestashop():
-            # For Prestashop we currently do not link parent partner
-            # TODO: To review later, need to be careful with existing customers
-            return False
-        return super(SaleIntegration, self)._should_link_parent_contact()
-
     def _fetch_external_carrier(self, carrier_data):
         if self.is_prestashop():
             adapter = self._build_adapter()
@@ -197,3 +198,16 @@ class SaleIntegration(models.Model):
             return carrier
 
         return super(SaleIntegration, self)._fetch_external_carrier(carrier_data)
+
+    def _set_zero_time_zone(self, external_date):
+        res = super(SaleIntegration, self)._set_zero_time_zone(
+            external_date,
+        )
+
+        if self.is_prestashop():
+            ps_timezone = self.get_settings_value('PS_TIMEZONE')
+            if ps_timezone:
+                timezone = pytz.timezone(ps_timezone)
+                utc_data = timezone.localize(res).astimezone(pytz.utc)
+                return datetime.strftime(utc_data, DATETIME_FORMAT)
+        return res

@@ -5,9 +5,9 @@ import logging
 
 from psycopg2 import Error
 
-from odoo.addons.integration.models.sale_integration import DEFAULT_LOG_LABEL, LOG_SEPARATOR
 from odoo.http import request
 from odoo import api, registry, SUPERUSER_ID
+from odoo.addons.integration.models.sale_integration import DEFAULT_LOG_LABEL, LOG_SEPARATOR
 
 
 _logger = logging.getLogger(__name__)
@@ -52,6 +52,9 @@ class IntegrationWebhook:
         integration = self.env['sale.integration'].sudo().browse(integration_id).exists()
         assert self.integration_type
         integration_filter = integration.filtered(lambda x: x.type_api == self.integration_type)
+        if not integration_filter:
+            _logger.error('Webhook unrecognized integration.')
+
         self.integration = integration_filter
 
         _logger.info(
@@ -63,6 +66,21 @@ class IntegrationWebhook:
         if integration_filter.save_webhook_log:
             self._save_log(*args, **kw)
         return self.integration
+
+    def set_order(self, key=None):
+        order_key = key or 'id'
+        post_data = self._get_post_data()
+        order_id = str(post_data[order_key])
+
+        order = self.env['sale.order'].from_external(self.integration, order_id, False)
+        if not order:
+            _logger.info('External Order not found, id=%s', order_id)
+            if self._is_new_order():
+                self.order_id = order
+                return True
+
+        self.order_id = order  # Save order as attribute of the controller instance
+        return self.order_id
 
     def get_webhook_topic(self):
         headers = self._get_headers()
@@ -87,11 +105,6 @@ class IntegrationWebhook:
             return False
 
     def _verify_webhook(self, *args, **kw):
-        # 0. Verify integration
-        if not self.integration:
-            _logger.error('Webhook unrecognized integration.')
-            return False
-
         name = self.integration.name
 
         # 1. Verify integration activation
@@ -148,6 +161,10 @@ class IntegrationWebhook:
         raise NotImplementedError
 
     @staticmethod
+    def _new_order_method_name():
+        raise NotImplementedError
+
+    @staticmethod
     def _get_hook_name_header():
         raise NotImplementedError
 
@@ -160,6 +177,9 @@ class IntegrationWebhook:
         raise NotImplementedError
 
     def _get_hook_name_method(self):
+        raise NotImplementedError
+
+    def _prepare_workflow_data(self):
         raise NotImplementedError
 
     def _save_log(self, *args, **kw):
@@ -199,6 +219,76 @@ class IntegrationWebhook:
         _logger.info(message_data)
         _logger.info(LOG_SEPARATOR)
 
+    def _is_new_order(self):
+        method_name_from_header = self._get_hook_name_method()
+        new_order_method_name = self._new_order_method_name()
+        return method_name_from_header == new_order_method_name
+
     def _run_method_from_header(self):
         name_method = self._get_hook_name_method()
+        if not hasattr(self, name_method):
+            _logger.info('Hook method "%s" for %s not found!', name_method, self.integration_type)
+            return False
         return getattr(self, name_method)()
+
+    def _get_order_sub_status(self, key):
+        post_data = self._get_post_data()
+        status_code = post_data.get(key, '')
+
+        sub_status_id = self.env['sale.order.sub.status']\
+            .from_external(self.integration, status_code, False)
+
+        if not sub_status_id:
+            _logger.error('Sub status not found for code: %s' % status_code)
+
+        return sub_status_id
+
+    def _receive_order_generic(self, *args, **kw):
+        integration = self.set_integration(*args, **kw)
+        if not integration:
+            return False
+
+        is_valid_webhook = self.verify_webhook(*args, **kw)
+        if not is_valid_webhook:
+            return is_valid_webhook
+
+        order = self.set_order()
+        if not order:
+            return False
+
+        is_done_action = self._run_method_from_header()
+        return is_done_action
+
+    def _receive_shipment_generic(self, *args, **kw):
+        integration = self.set_integration(*args, **kw)
+        if not integration:
+            return False
+
+        is_valid_webhook = self.verify_webhook(*args, **kw)
+        if not is_valid_webhook:
+            return is_valid_webhook
+
+        order = self.set_order(key='order_id')
+        if not order:
+            return False
+
+        is_done_action = self._run_method_from_header()
+        return is_done_action
+
+    def _cancel_order_generic(self):
+        order = self.order_id
+        job_kwargs = order._build_workflow_job_kwargs()
+        job_kwargs['description'] = 'Integration Cancel Order'
+
+        order.with_delay(**job_kwargs)._integration_action_cancel_no_dispatch()
+        return True
+
+    def _build_and_run_order_pipeline_generic(self, data=None):
+        order = self.order_id
+        order_data = data or self._prepare_workflow_data()
+        ctx = dict(default_skip_dispatch=True)
+        pipeline = order.integration_pipeline
+
+        if not pipeline:
+            return order.with_context(**ctx)._build_and_run_integration_workflow(order_data)
+        return pipeline.with_context(**ctx)._update_and_re_run_pipeline(order_data)

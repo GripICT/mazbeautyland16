@@ -2,7 +2,7 @@
 
 {
     'name': 'Integration',
-    'version': '16.0.1.8.4',
+    'version': '16.0.1.9.0',
     'category': 'Hidden',
     'author': 'VentorTech',
     'website': 'https://ventor.tech',
@@ -49,6 +49,7 @@
         'views/product_feature_value_views.xml',
         'views/queue_job.xml',
         'views/res_partner_views.xml',
+        'views/res_config_settings_views.xml',
 
         # External
         'views/external/integration_account_tax_group_external_views.xml',
@@ -120,5 +121,6 @@
     'application': True,
     "cloc_exclude": [
         "**/*"
-    ]
+    ],
+    'post_init_hook': 'post_init_hook',
 }

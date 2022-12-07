@@ -58,6 +58,7 @@ class ProductPublicCategory(models.Model):
 
     parent_path = fields.Char(
         index=True,
+        unaccent=False,
     )
 
     sequence = fields.Integer(

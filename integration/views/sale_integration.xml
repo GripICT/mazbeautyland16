@@ -102,23 +102,23 @@
                                             <field name="picking_delivery_note_field" />
                                             <field name="so_external_reference_field" />
                                         </group>
-                                        <group name="prestashop_actions"
-                                               string="Order Actions"
-                                               attrs="{'invisible': ['|', ('id', '=', False), ('type_api', '!=', 'prestashop')]}">
-
-                                            <field name="run_action_on_cancel_so"/>
-                                            <field name="sub_status_cancel_id"
-                                               attrs="{
-                                                    'required' : [('run_action_on_cancel_so', '=', True)]
-                                               }"
-                                            />
-                                            <p/>
-                                            <field name="run_action_on_shipping_so"/>
-                                            <field name="sub_status_shipped_id"
+                                        <group name="order_actions" string="Order Actions">
+                                            <field name="run_action_on_cancel_so" attrs="{'invisible': ['|', ('id', '=', False), ('type_api', '!=', 'prestashop')]}"/>
+                                            <field name="sub_status_cancel_id" 
                                                    attrs="{
-                                                        'required' : [('run_action_on_shipping_so', '=', True)]
-                                                   }"
+                                                        'required' : [('run_action_on_cancel_so', '=', True)],
+                                                        'invisible': ['|', ('id', '=', False), ('type_api', '!=', 'prestashop')],
+                                                    }"
                                             />
+                                            <field name="run_action_on_shipping_so" attrs="{'invisible': ['|', ('id', '=', False), ('type_api', '!=', 'prestashop')]}"/>
+                                            <field name="sub_status_shipped_id" 
+                                                   attrs="{
+                                                        'required' : [('sub_status_shipped_id', '=', True)],
+                                                        'invisible': ['|', ('id', '=', False), ('type_api', '!=', 'prestashop')],
+                                                    }"
+                                            />
+                                            <field name="run_action_on_so_invoice_status"/>
+                                            <field name="sub_status_paid_id" attrs="{'required' : [('run_action_on_so_invoice_status', '=', True)]}"/>
                                         </group>
                                     </group>
                             </page>
@@ -142,6 +142,7 @@
                             <page string="Product Defaults" name="product_default_page">
                                 <group>
                                     <field name="allow_export_images" />
+                                    <field name="send_inactive_product" />
                                 </group>
                             </page>
                             <page string="Inventory">
@@ -227,13 +228,16 @@
                                     />
                                 </group>
                             </page>
+                            <page name="external_integration" string="External Integration">
+                                <group>
+                                    <field name="request_order_url" widget="CopyClipboardChar" readonly="1" style="width:100%%"/>
+                                </group>
+                            </page>
                             <page string="Jobs">
                                 <group>
                                     <field name="export_template_job_enabled"/>
                                     <field name="export_tracking_job_enabled"/>
-                                    <field name="export_sale_order_status_job_enabled"
-                                           attrs="{'invisible': [('type_api', '!=', 'prestashop')]}"
-                                    />
+                                    <field name="export_sale_order_status_job_enabled"/>
                                 </group>
                             </page>
                             <page string="Initial Import">

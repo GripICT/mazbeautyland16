@@ -36,6 +36,9 @@ class TemplateConverter:
                 search(search_domain).mapped('ecommerce_field_id'):
             result[field.technical_name] = self._integration.calculate_field_value(template, field)
 
+        if self._integration.send_inactive_product and not external_id:
+            result.update(self._integration.force_set_inactive())
+
         result_upd = Template._template_converter_update(
             result,
             self._integration,

@@ -11,7 +11,7 @@
                     <field name="tax_id"/>
                     <field name="external_tax_id"/>
                     <button type="object"
-                            name="import_taxes"
+                            name="action_import_taxes_from_mapping"
                             string="Import Taxes"
                             attrs="{'invisible': [('tax_id', '!=', False)]}"/>
                 </tree>
@@ -42,7 +42,7 @@
             <field name="binding_model_id" ref="integration.model_integration_account_tax_mapping"/>
             <field name="binding_view_types">list</field>
             <field name="state">code</field>
-            <field name="code">action = records.import_taxes()</field>
+            <field name="code">action = records.action_import_taxes_from_mapping()</field>
         </record>
 
     </data>

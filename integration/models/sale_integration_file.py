@@ -110,7 +110,7 @@ class SaleIntegrationInputFile(models.Model):
         help='Reference received from the input file',
     )
 
-    @api.model
+    @api.model_create_multi
     def create(self, vals_list):
         input_files = super(SaleIntegrationInputFile, self).create(vals_list)
 

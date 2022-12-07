@@ -7,6 +7,9 @@ from odoo import models, fields
 
 _logger = logging.getLogger(__name__)
 
+INV_VALIDATED = 'validated'
+INV_PAID = 'paid_in_payment'
+
 
 class IntegrationSaleOrderPaymentMethodExternal(models.Model):
     _name = 'integration.sale.order.payment.method.external'
@@ -18,6 +21,21 @@ class IntegrationSaleOrderPaymentMethodExternal(models.Model):
         comodel_name='account.journal',
         string='Payment Journal',
         domain="[('type', 'in', ('cash', 'bank'))]",
+    )
+    payment_term_id = fields.Many2one(
+        comodel_name='account.payment.term',
+        string='Payment Terms',
+        domain="[('company_id', 'in', [company_id, False])]",
+    )
+    send_payment_status_when = fields.Selection(
+        selection=[
+            (INV_PAID, 'Invoice marked as Paid/In Payment'),
+            (INV_VALIDATED, 'Invoice is Validated'),
+        ],
+        string='Send payment status when',
+        default='paid_in_payment',
+        required=True,
+        help='Create Invoice in external system when in Odoo ...',
     )
 
     def unlink(self):

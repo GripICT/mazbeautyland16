@@ -35,7 +35,9 @@ from . import stock_quant
 from . import res_lang
 from . import res_country
 from . import res_country_state
+from . import res_config_settings
 from . import account_tax
+from . import account_move
 from . import sale_order_payment_method
 from . import mrp_bom
 from . import mrp_bom_line

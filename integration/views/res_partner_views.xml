@@ -6,8 +6,14 @@
         <field name="model">res.partner</field>
         <field name="inherit_id" ref="base.view_partner_form"/>
         <field name="arch" type="xml">
+            <xpath expr="//field[@name='company_name']" position="before">
+                <field name="external_company_name" attrs="{'invisible': [('external_company_name', 'in', [False, ''])]}"/>
+            </xpath>
             <xpath expr="//page[@name='internal_notes']" position="after">
                 <page string="e-Commerce Integration" name="partner_integration"/>
+            </xpath>
+            <xpath expr="//page[@name='contact_addresses']/field[@name='child_ids']/form//field[@name='name']" position="after">
+                <field name="external_company_name" placeholder="External Company Name"/>
             </xpath>
         </field>
     </record>
