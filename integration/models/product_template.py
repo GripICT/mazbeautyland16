@@ -170,7 +170,7 @@ class ProductTemplate(models.Model):
 
             rec.public_filter_categ_ids = [(6, 0, category_ids)]
 
-    @api.model_create_multi
+    @api.model
     def create(self, vals_list):
         # We need to avoid calling export separately
         # from product.template and product.product

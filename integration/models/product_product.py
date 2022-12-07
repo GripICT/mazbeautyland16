@@ -38,7 +38,7 @@ class ProductProduct(models.Model):
              'By default it syncs to all.',
     )
 
-    @api.model_create_multi
+    @api.model
     def create(self, vals_list):
         # We need to avoid calling export separately
         # from product.template and product.product
