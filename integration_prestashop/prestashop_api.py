@@ -1439,6 +1439,17 @@ class PrestaShopApiClient(AbsApiClient):
         # when creating product from external product
         pass
 
+    def _check_active_categories(self, external_category_ids):
+        if external_category_ids:
+            external_categories = self._client.model('category').search_read(
+                filters={'id': '[%s]' % '|'.join(external_category_ids), 'active': IS_TRUE},
+                fields=['id'],
+            )
+
+            external_category_ids = [x['id'] for x in external_categories]
+
+        return external_category_ids
+
     def get_product_for_import(self, product_code, import_images=False):
         # Get product
         presta_template = self._client.model('product').search_read(
@@ -1469,7 +1480,14 @@ class PrestaShopApiClient(AbsApiClient):
         if not isinstance(public_category_ids, list):
             public_category_ids = [public_category_ids]
 
-        public_category_ids = [x['id'] for x in public_category_ids]
+        # Hotfix to remove inactive categories
+        public_category_ids = self._check_active_categories(
+            [x['id'] for x in public_category_ids])
+
+        external_product_category_id = presta_template['id_category_default']
+        if external_product_category_id and external_product_category_id != IS_FALSE:
+            if not self._check_active_categories([external_product_category_id]):
+                external_product_category_id = IS_FALSE
 
         attribute_value_ids = presta_template.get('associations', {})\
             .get('product_option_values', {}).get('product_option_value', [])
@@ -1501,7 +1519,7 @@ class PrestaShopApiClient(AbsApiClient):
             'website_short_description': presta_template['description_short'],
             'website_seo_metatitle': presta_template['meta_title'],
             'website_seo_description': presta_template['meta_description'],
-            'default_public_categ_id': presta_template['id_category_default'],
+            'default_public_categ_id': external_product_category_id,
             'sale_ok': presta_template['available_for_order'],
             'barcode': presta_template['ean13'],
             'active': presta_template['active'],
